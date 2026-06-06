@@ -20,6 +20,9 @@ class AgentMetrics:
         self.vector_queries_total = 0
         self.vector_query_failures = 0
         self.vector_query_duration_ms = 0
+        self.audit_queries_total = 0
+        self.audit_query_failures = 0
+        self.audit_query_duration_ms = 0
 
     async def record(self, *, success: bool) -> None:
         async with self._lock:
@@ -50,6 +53,13 @@ class AgentMetrics:
             if not success:
                 self.vector_query_failures += 1
 
+    async def record_audit_query(self, *, success: bool, duration_ms: int) -> None:
+        async with self._lock:
+            self.audit_queries_total += 1
+            self.audit_query_duration_ms += duration_ms
+            if not success:
+                self.audit_query_failures += 1
+
     async def snapshot(self, *, registered_agents: list[str]) -> AgentMetricsResponse:
         async with self._lock:
             return AgentMetricsResponse(
@@ -66,4 +76,7 @@ class AgentMetrics:
                 vector_queries_total=self.vector_queries_total,
                 vector_query_failures=self.vector_query_failures,
                 vector_query_duration_ms=self.vector_query_duration_ms,
+                audit_queries_total=self.audit_queries_total,
+                audit_query_failures=self.audit_query_failures,
+                audit_query_duration_ms=self.audit_query_duration_ms,
             )

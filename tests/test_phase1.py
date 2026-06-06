@@ -4,6 +4,7 @@ import asyncio
 
 from fastapi.testclient import TestClient
 
+from app.agents.code_audit_agent import CodeAuditAgent
 from app.agents.database_agent import DatabaseAgent
 from app.agents.repository_agent import RepositoryAgent
 from app.agents.vector_search_agent import VectorSearchAgent
@@ -15,6 +16,7 @@ from app.repositories.memory_embeddings_repository import MemoryEmbeddingsReposi
 from app.repositories.repo_chunks_repository import RepoChunksRepository
 from app.repositories.repository_intelligence_repository import RepositoryIntelligenceRepository
 from app.repositories.vector_search_repository import VectorSearchRepository
+from app.services.audit_service import AuditService
 from app.services.mongodb_service import MongoDBService
 
 
@@ -28,7 +30,7 @@ def test_health_endpoint() -> None:
     assert payload == {
         "status": "ok",
         "version": "0.1.0",
-        "registered_agents": 4,
+        "registered_agents": 5,
     }
 
 
@@ -62,6 +64,7 @@ def test_agent_discovery() -> None:
     assert payload[1]["name"] == "DatabaseAgent"
     assert payload[2]["name"] == "RepositoryAgent"
     assert payload[3]["name"] == "VectorSearchAgent"
+    assert payload[4]["name"] == "CodeAuditAgent"
 
 
 def test_request_id_header_is_preserved() -> None:
@@ -92,8 +95,17 @@ def test_agent_metrics() -> None:
         "vector_queries_total",
         "vector_query_failures",
         "vector_query_duration_ms",
+        "audit_queries_total",
+        "audit_query_failures",
+        "audit_query_duration_ms",
     }
-    assert payload["registered_agents"] == ["system", "DatabaseAgent", "RepositoryAgent", "VectorSearchAgent"]
+    assert payload["registered_agents"] == [
+        "system",
+        "DatabaseAgent",
+        "RepositoryAgent",
+        "VectorSearchAgent",
+        "CodeAuditAgent",
+    ]
 
 
 class FakeCommandDatabase:
@@ -351,25 +363,31 @@ class FakeEmbeddingService:
 
 class FakeVectorMongoDBService:
     async def aggregate(self, collection_name: str, pipeline: list[dict[str, object]]) -> list[dict[str, object]]:
-        assert pipeline[0]["$vectorSearch"]["queryVector"] == [0.1, 0.2, 0.3]
-        if collection_name == "memory_embeddings":
+        if "$vectorSearch" in pipeline[0]:
+            assert pipeline[0]["$vectorSearch"]["queryVector"] == [0.1, 0.2, 0.3]
+            if collection_name == "memory_embeddings":
+                return [
+                    {
+                        "file_path": None,
+                        "repository": "yenkasaChat",
+                        "score": 0.91,
+                        "snippet": "User memory about authentication decisions.",
+                    }
+                ]
+            assert collection_name == "repo_chunks"
             return [
                 {
-                    "file_path": None,
+                    "file_path": "backend/auth/jwt.py",
                     "repository": "yenkasaChat",
-                    "score": 0.91,
-                    "snippet": "User memory about authentication decisions.",
+                    "score": 0.94,
+                    "snippet": "def verify_jwt(token): ...",
                 }
             ]
         assert collection_name == "repo_chunks"
-        return [
-            {
-                "file_path": "backend/auth/jwt.py",
-                "repository": "yenkasaChat",
-                "score": 0.94,
-                "snippet": "def verify_jwt(token): ...",
-            }
-        ]
+        pipeline_text = str(pipeline)
+        if "latest_indexed_at" in pipeline_text:
+            return [{"repository": "yenkasaChat", "chunk_count": 20, "file_count": 4}]
+        return [{"repository": "yenkasaChat", "chunk_count": 20}]
 
 
 def build_vector_search_agent(mongodb: FakeVectorMongoDBService | None = None) -> VectorSearchAgent:
@@ -428,4 +446,159 @@ def test_vector_search_routing_behavior() -> None:
     response = asyncio.run(orchestrator.route(AgentQueryRequest(query="Find login implementation")))
 
     assert response.agent == "VectorSearchAgent"
+    assert response.success is True
+
+
+class FakeAuditDependencyAgent:
+    name = "fake"
+
+    def __init__(self, result: dict[str, object]) -> None:
+        self.result = result
+        self.queries: list[str] = []
+
+    async def execute(self, query: str, context: dict[str, object] | None = None):
+        self.queries.append(query)
+        return type(
+            "FakeResponse",
+            (),
+            {
+                "agent": self.name,
+                "success": True,
+                "result": self.result,
+                "error": None,
+            },
+        )()
+
+
+def build_code_audit_agent(
+    *,
+    vector_result: dict[str, object] | None = None,
+    repository_result: dict[str, object] | None = None,
+    database_result: dict[str, object] | None = None,
+) -> CodeAuditAgent:
+    vector_agent = FakeAuditDependencyAgent(
+        vector_result
+        or {
+            "matches": [
+                {
+                    "file_path": "app/config.py",
+                    "repository": "yenkasaChat",
+                    "similarity_score": 0.95,
+                    "snippet": "API_KEY = 'secret-token'",
+                }
+            ]
+        }
+    )
+    repository_agent = FakeAuditDependencyAgent(
+        repository_result
+        or {
+            "repositories": [
+                {
+                    "repository": "yenkasaChat",
+                    "chunk_count": 800,
+                    "file_count": 120,
+                }
+            ]
+        }
+    )
+    database_agent = FakeAuditDependencyAgent(
+        database_result
+        or {
+            "top_repositories": [
+                {
+                    "repository": "yenkasaChat",
+                    "chunk_count": 800,
+                }
+            ]
+        }
+    )
+    return CodeAuditAgent(
+        AuditService(
+            database_agent=database_agent,
+            repository_agent=repository_agent,
+            vector_search_agent=vector_agent,
+        )
+    )
+
+
+def test_code_audit_security_audit() -> None:
+    response = asyncio.run(build_code_audit_agent().execute("Security audit yenkasaChat"))
+
+    assert response.agent == "CodeAuditAgent"
+    assert response.success is True
+    assert response.result["findings"][0]["severity"] == "HIGH"
+    assert response.result["findings"][0]["category"] == "Security"
+
+
+def test_code_audit_architecture_audit() -> None:
+    response = asyncio.run(
+        build_code_audit_agent(
+            vector_result={
+                "matches": [
+                    {
+                        "file_path": "app/services/user.py",
+                        "repository": "yenkasaChat",
+                        "similarity_score": 0.87,
+                        "snippet": "duplicate responsibilities across user service and profile service",
+                    }
+                ]
+            }
+        ).execute("Architecture audit YME")
+    )
+
+    categories = {finding["category"] for finding in response.result["findings"]}
+    assert response.success is True
+    assert "Architecture" in categories
+
+
+def test_code_audit_api_audit() -> None:
+    response = asyncio.run(
+        build_code_audit_agent(
+            vector_result={
+                "matches": [
+                    {
+                        "file_path": "app/routes/auth.py",
+                        "repository": "yenkasaChat",
+                        "similarity_score": 0.9,
+                        "snippet": "router.post('/login') request body without validation response varies",
+                    }
+                ]
+            }
+        ).execute("API audit")
+    )
+
+    assert response.success is True
+    assert response.result["findings"][0]["category"] == "API"
+    assert response.result["findings"][0]["severity"] == "MEDIUM"
+
+
+def test_code_audit_code_quality_audit() -> None:
+    response = asyncio.run(
+        build_code_audit_agent(
+            vector_result={
+                "matches": [
+                    {
+                        "file_path": "app/jobs/sync.py",
+                        "repository": "yenkasaChat",
+                        "similarity_score": 0.88,
+                        "snippet": "TODO duplicate logic missing error handling",
+                    }
+                ]
+            }
+        ).execute("Code quality audit")
+    )
+
+    categories = {finding["category"] for finding in response.result["findings"]}
+    assert response.success is True
+    assert "Code Quality" in categories
+
+
+def test_code_audit_routing_behavior() -> None:
+    orchestrator = YenkasaCodeOrchestrator(
+        mongodb=FakeVectorMongoDBService(),
+        embedding_service=FakeEmbeddingService(),
+    )
+    response = asyncio.run(orchestrator.route(AgentQueryRequest(query="Find issues in yenkasaChat")))
+
+    assert response.agent == "CodeAuditAgent"
     assert response.success is True

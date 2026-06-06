@@ -17,3 +17,6 @@ class AgentMetricsResponse(BaseModel):
     vector_queries_total: int
     vector_query_failures: int
     vector_query_duration_ms: int
+    audit_queries_total: int
+    audit_query_failures: int
+    audit_query_duration_ms: int
