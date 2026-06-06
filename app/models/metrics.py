@@ -32,3 +32,6 @@ class AgentMetricsResponse(BaseModel):
     yio_requests_total: int
     yio_failures_total: int
     yio_execution_duration_ms: int
+    product_builder_queries_total: int
+    product_builder_query_failures: int
+    product_builder_query_duration_ms: int

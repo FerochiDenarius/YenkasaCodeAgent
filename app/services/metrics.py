@@ -35,6 +35,9 @@ class AgentMetrics:
         self.yio_requests_total = 0
         self.yio_failures_total = 0
         self.yio_execution_duration_ms = 0
+        self.product_builder_queries_total = 0
+        self.product_builder_query_failures = 0
+        self.product_builder_query_duration_ms = 0
 
     async def record(self, *, success: bool) -> None:
         async with self._lock:
@@ -100,6 +103,13 @@ class AgentMetrics:
             if not success:
                 self.yio_failures_total += 1
 
+    async def record_product_builder_query(self, *, success: bool, duration_ms: int) -> None:
+        async with self._lock:
+            self.product_builder_queries_total += 1
+            self.product_builder_query_duration_ms += duration_ms
+            if not success:
+                self.product_builder_query_failures += 1
+
     async def snapshot(self, *, registered_agents: list[str]) -> AgentMetricsResponse:
         async with self._lock:
             return AgentMetricsResponse(
@@ -131,4 +141,7 @@ class AgentMetrics:
                 yio_requests_total=self.yio_requests_total,
                 yio_failures_total=self.yio_failures_total,
                 yio_execution_duration_ms=self.yio_execution_duration_ms,
+                product_builder_queries_total=self.product_builder_queries_total,
+                product_builder_query_failures=self.product_builder_query_failures,
+                product_builder_query_duration_ms=self.product_builder_query_duration_ms,
             )

@@ -75,6 +75,15 @@ class IntentClassifier:
             "notification",
             "notification failures",
         ),
+        "product_builder": (
+            "generate",
+            "build",
+            "create project",
+            "create api",
+            "create schema",
+            "create screen",
+            "generate code",
+        ),
     }
 
     def classify(self, query: str) -> list[str]:

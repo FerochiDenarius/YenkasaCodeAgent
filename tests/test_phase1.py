@@ -8,6 +8,7 @@ from app.agents.cloudrun_agent import CloudRunAgent
 from app.agents.code_audit_agent import CodeAuditAgent
 from app.agents.database_agent import DatabaseAgent
 from app.agents.observability_agent import ObservabilityAgent
+from app.agents.product_builder_agent import ProductBuilderAgent
 from app.agents.refactor_agent import RefactorAgent
 from app.agents.registry import AgentRegistry
 from app.agents.repository_agent import RepositoryAgent
@@ -29,6 +30,7 @@ from app.services.audit_service import AuditService
 from app.services.cloudrun_service import CloudRunService
 from app.services.mongodb_service import MongoDBService
 from app.services.observability_service import ObservabilityService
+from app.services.product_builder_service import ProductBuilderService
 from app.services.refactor_service import RefactorService
 
 
@@ -42,7 +44,7 @@ def test_health_endpoint() -> None:
     assert payload == {
         "status": "ok",
         "version": "0.1.0",
-        "registered_agents": 8,
+        "registered_agents": 9,
     }
 
 
@@ -80,6 +82,7 @@ def test_agent_discovery() -> None:
     assert payload[5]["name"] == "RefactorAgent"
     assert payload[6]["name"] == "CloudRunAgent"
     assert payload[7]["name"] == "ObservabilityAgent"
+    assert payload[8]["name"] == "ProductBuilderAgent"
 
 
 def test_request_id_header_is_preserved() -> None:
@@ -125,6 +128,9 @@ def test_agent_metrics() -> None:
         "yio_requests_total",
         "yio_failures_total",
         "yio_execution_duration_ms",
+        "product_builder_queries_total",
+        "product_builder_query_failures",
+        "product_builder_query_duration_ms",
     }
     assert payload["registered_agents"] == [
         "system",
@@ -135,6 +141,7 @@ def test_agent_metrics() -> None:
         "RefactorAgent",
         "CloudRunAgent",
         "ObservabilityAgent",
+        "ProductBuilderAgent",
     ]
 
 
@@ -976,3 +983,63 @@ def test_yio_execution_failures() -> None:
     assert response.success is False
     assert response.error == "One or more planned agents failed."
     assert response.result["findings"][0]["category"] == "Execution"
+
+
+def build_product_builder_agent() -> ProductBuilderAgent:
+    return ProductBuilderAgent(ProductBuilderService())
+
+
+def test_product_builder_flutter_generation() -> None:
+    response = asyncio.run(build_product_builder_agent().execute("Generate Flutter screen for login"))
+
+    assert response.agent == "ProductBuilderAgent"
+    assert response.success is True
+    assert response.result["generation_type"] == "flutter"
+    assert response.result["generated_files"][0]["kind"] == "screen"
+
+
+def test_product_builder_fastapi_generation() -> None:
+    response = asyncio.run(build_product_builder_agent().execute("Create API with FastAPI router and schema"))
+
+    assert response.success is True
+    assert response.result["generation_type"] == "fastapi"
+    assert {item["kind"] for item in response.result["generated_files"]} == {"router", "schema"}
+
+
+def test_product_builder_nodejs_generation() -> None:
+    response = asyncio.run(build_product_builder_agent().execute("Generate Node.js routes and controller"))
+
+    assert response.success is True
+    assert response.result["generation_type"] == "nodejs"
+    assert response.result["generated_files"][0]["path"].endswith(".routes.js")
+
+
+def test_product_builder_schema_generation() -> None:
+    response = asyncio.run(build_product_builder_agent().execute("Create schema and indexes for MongoDB"))
+
+    assert response.success is True
+    assert response.result["generation_type"] == "mongodb"
+    assert {item["kind"] for item in response.result["generated_files"]} == {"mongodb_schema", "index"}
+
+
+def test_product_builder_documentation_generation() -> None:
+    response = asyncio.run(build_product_builder_agent().execute("Generate README and architecture documentation"))
+
+    assert response.success is True
+    assert response.result["generation_type"] == "docs"
+    assert response.result["generated_files"][0]["path"] == "README.generated.md"
+
+
+def test_product_builder_yio_routing() -> None:
+    orchestrator = YenkasaCodeOrchestrator(
+        mongodb=FakeVectorMongoDBService(),
+        embedding_service=FakeEmbeddingService(),
+        cloudrun_service=FakeCloudRunService(),
+        observability_service=FakeObservabilityService(),
+    )
+    response = asyncio.run(orchestrator.route(AgentQueryRequest(query="Generate Flutter screen for onboarding")))
+
+    assert response.agent == "YIO"
+    assert response.success is True
+    assert response.result["plan"]["agents"] == ["ProductBuilderAgent"]
+    assert response.result["evidence"][0]["result"]["generation_type"] == "flutter"

@@ -3,6 +3,7 @@ from app.agents.cloudrun_agent import CloudRunAgent
 from app.agents.code_audit_agent import CodeAuditAgent
 from app.agents.database_agent import DatabaseAgent
 from app.agents.observability_agent import ObservabilityAgent
+from app.agents.product_builder_agent import ProductBuilderAgent
 from app.agents.refactor_agent import RefactorAgent
 from app.agents.registry import AgentRegistry
 from app.agents.repository_agent import RepositoryAgent
@@ -16,6 +17,7 @@ __all__ = [
     "CodeAuditAgent",
     "DatabaseAgent",
     "ObservabilityAgent",
+    "ProductBuilderAgent",
     "RefactorAgent",
     "RepositoryAgent",
     "SystemAgent",

@@ -26,6 +26,7 @@ class ExecutionPlanner:
         "refactor": ["CodeAuditAgent", "RepositoryAgent", "VectorSearchAgent", "RefactorAgent"],
         "deployment": ["CloudRunAgent"],
         "observability": ["ObservabilityAgent"],
+        "product_builder": ["ProductBuilderAgent"],
     }
 
     def plan(self, *, query: str, intents: list[str]) -> ExecutionPlan:
@@ -47,6 +48,6 @@ class ExecutionPlanner:
         )
 
     def _parallel_group(self, agent: str) -> int:
-        if agent in {"RepositoryAgent", "VectorSearchAgent", "CloudRunAgent", "ObservabilityAgent"}:
+        if agent in {"RepositoryAgent", "VectorSearchAgent", "CloudRunAgent", "ObservabilityAgent", "ProductBuilderAgent"}:
             return 1
         return 0

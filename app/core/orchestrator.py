@@ -8,6 +8,7 @@ from app.agents import CloudRunAgent
 from app.agents import CodeAuditAgent
 from app.agents import DatabaseAgent
 from app.agents import ObservabilityAgent
+from app.agents import ProductBuilderAgent
 from app.agents import RefactorAgent
 from app.agents import RepositoryAgent
 from app.agents import SystemAgent
@@ -28,6 +29,7 @@ from app.services.embedding_service import EmbeddingService
 from app.services.metrics import AgentMetrics
 from app.services.mongodb_service import MongoDBService
 from app.services.observability_service import ObservabilityService
+from app.services.product_builder_service import ProductBuilderService
 from app.services.refactor_service import RefactorService
 
 
@@ -102,6 +104,15 @@ class YenkasaCodeOrchestrator:
         "performance",
         "incident",
         "monitoring",
+    )
+    product_builder_intent_keywords = (
+        "generate",
+        "build",
+        "create project",
+        "create api",
+        "create schema",
+        "create screen",
+        "generate code",
     )
 
     def __init__(
@@ -178,6 +189,8 @@ class YenkasaCodeOrchestrator:
             self.registry.register(CloudRunAgent(cloudrun_service=self.cloudrun_service))
         if self.observability_service is not None and self.registry.get(ObservabilityAgent.name) is None:
             self.registry.register(ObservabilityAgent(observability_service=self.observability_service))
+        if self.registry.get(ProductBuilderAgent.name) is None:
+            self.registry.register(ProductBuilderAgent(product_builder_service=ProductBuilderService()))
 
     def discover_agents(self) -> list[AgentDescriptor]:
         return self.registry.list_agents()
@@ -238,6 +251,8 @@ class YenkasaCodeOrchestrator:
             await self.metrics.record_cloudrun_query(success=response.success, duration_ms=duration_ms)
         if agent.name == ObservabilityAgent.name:
             await self.metrics.record_observability_query(success=response.success, duration_ms=duration_ms)
+        if agent.name == ProductBuilderAgent.name:
+            await self.metrics.record_product_builder_query(success=response.success, duration_ms=duration_ms)
         log_structured(
             LOGGER,
             logging.INFO if response.success else logging.ERROR,
@@ -251,6 +266,10 @@ class YenkasaCodeOrchestrator:
 
     def _select_agent(self, query: str) -> str:
         normalized = query.lower()
+        if self.registry.get(ProductBuilderAgent.name) is not None and any(
+            keyword in normalized for keyword in self.product_builder_intent_keywords
+        ):
+            return ProductBuilderAgent.name
         if self.registry.get(ObservabilityAgent.name) is not None and any(
             keyword in normalized for keyword in self.observability_intent_keywords
         ):
