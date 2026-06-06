@@ -17,6 +17,7 @@ from app.models.agent import AgentDescriptor
 from app.models.agent import AgentQueryRequest
 from app.models.agent import AgentResponse
 from app.models.metrics import AgentMetricsResponse
+from app.orchestrator import YenkasaIntelligenceOrchestrator
 from app.repositories import MemoryEmbeddingsRepository
 from app.repositories import RepoChunksRepository
 from app.repositories import RepositoryIntelligenceRepository
@@ -119,6 +120,7 @@ class YenkasaCodeOrchestrator:
         self.cloudrun_service = cloudrun_service
         self.observability_service = observability_service
         self._register_foundation_agents()
+        self.yio = YenkasaIntelligenceOrchestrator(registry=self.registry)
 
     def _register_foundation_agents(self) -> None:
         if self.registry.get(SystemAgent.name) is None:
@@ -185,6 +187,22 @@ class YenkasaCodeOrchestrator:
 
     async def route(self, request: AgentQueryRequest) -> AgentResponse:
         started = time.perf_counter()
+        if request.agent is None:
+            response = await self.yio.execute(query=request.query, context=request.context)
+            duration_ms = int((time.perf_counter() - started) * 1000)
+            await self.metrics.record(success=response.success)
+            await self.metrics.record_yio_request(success=response.success, duration_ms=duration_ms)
+            log_structured(
+                LOGGER,
+                logging.INFO if response.success else logging.ERROR,
+                "yio_query_completed",
+                selected_agent=response.agent,
+                execution_time_ms=duration_ms,
+                success=response.success,
+                error=response.error,
+            )
+            return response
+
         agent_name = request.agent or self._select_agent(request.query)
         response: AgentResponse
         try:

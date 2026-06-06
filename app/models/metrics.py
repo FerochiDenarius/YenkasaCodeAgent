@@ -29,3 +29,6 @@ class AgentMetricsResponse(BaseModel):
     observability_queries_total: int
     observability_query_failures: int
     observability_query_duration_ms: int
+    yio_requests_total: int
+    yio_failures_total: int
+    yio_execution_duration_ms: int

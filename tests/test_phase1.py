@@ -9,12 +9,18 @@ from app.agents.code_audit_agent import CodeAuditAgent
 from app.agents.database_agent import DatabaseAgent
 from app.agents.observability_agent import ObservabilityAgent
 from app.agents.refactor_agent import RefactorAgent
+from app.agents.registry import AgentRegistry
 from app.agents.repository_agent import RepositoryAgent
 from app.agents.vector_search_agent import VectorSearchAgent
 from app.config.settings import Settings
 from app.core.orchestrator import YenkasaCodeOrchestrator
 from app.main import app
 from app.models.agent import AgentQueryRequest
+from app.models.agent import AgentResponse
+from app.orchestrator import ExecutionPlanner
+from app.orchestrator import IntentClassifier
+from app.orchestrator import ResponseSynthesizer
+from app.orchestrator import YenkasaIntelligenceOrchestrator
 from app.repositories.memory_embeddings_repository import MemoryEmbeddingsRepository
 from app.repositories.repo_chunks_repository import RepoChunksRepository
 from app.repositories.repository_intelligence_repository import RepositoryIntelligenceRepository
@@ -42,7 +48,7 @@ def test_health_endpoint() -> None:
 
 def test_agent_query_routes_to_system_agent() -> None:
     with TestClient(app) as client:
-        response = client.post("/api/agent/query", json={"query": "status"})
+        response = client.post("/api/agent/query", json={"query": "status", "agent": "system"})
 
     assert response.status_code == 200
     assert response.headers["X-Request-ID"]
@@ -116,6 +122,9 @@ def test_agent_metrics() -> None:
         "observability_queries_total",
         "observability_query_failures",
         "observability_query_duration_ms",
+        "yio_requests_total",
+        "yio_failures_total",
+        "yio_execution_duration_ms",
     }
     assert payload["registered_agents"] == [
         "system",
@@ -370,7 +379,9 @@ def test_repository_latest_activity() -> None:
 
 def test_repository_agent_routing_behavior() -> None:
     orchestrator = YenkasaCodeOrchestrator(mongodb=FakeRepositoryMongoDBService())
-    response = asyncio.run(orchestrator.route(AgentQueryRequest(query="Show repository inventory")))
+    response = asyncio.run(
+        orchestrator.route(AgentQueryRequest(query="Show repository inventory", agent="RepositoryAgent"))
+    )
 
     assert response.agent == "RepositoryAgent"
     assert response.success is True
@@ -464,7 +475,9 @@ def test_vector_search_routing_behavior() -> None:
         mongodb=FakeVectorMongoDBService(),
         embedding_service=FakeEmbeddingService(),
     )
-    response = asyncio.run(orchestrator.route(AgentQueryRequest(query="Find login implementation")))
+    response = asyncio.run(
+        orchestrator.route(AgentQueryRequest(query="Find login implementation", agent="VectorSearchAgent"))
+    )
 
     assert response.agent == "VectorSearchAgent"
     assert response.success is True
@@ -619,7 +632,9 @@ def test_code_audit_routing_behavior() -> None:
         mongodb=FakeVectorMongoDBService(),
         embedding_service=FakeEmbeddingService(),
     )
-    response = asyncio.run(orchestrator.route(AgentQueryRequest(query="Find issues in yenkasaChat")))
+    response = asyncio.run(
+        orchestrator.route(AgentQueryRequest(query="Find issues in yenkasaChat", agent="CodeAuditAgent"))
+    )
 
     assert response.agent == "CodeAuditAgent"
     assert response.success is True
@@ -729,7 +744,9 @@ def test_refactor_routing_behavior() -> None:
         mongodb=FakeVectorMongoDBService(),
         embedding_service=FakeEmbeddingService(),
     )
-    response = asyncio.run(orchestrator.route(AgentQueryRequest(query="Reduce technical debt in yenkasaChat")))
+    response = asyncio.run(
+        orchestrator.route(AgentQueryRequest(query="Reduce technical debt in yenkasaChat", agent="RefactorAgent"))
+    )
 
     assert response.agent == "RefactorAgent"
     assert response.success is True
@@ -857,10 +874,105 @@ def test_cloudrun_and_observability_routing() -> None:
         cloudrun_service=FakeCloudRunService(),
         observability_service=FakeObservabilityService(),
     )
-    cloudrun_response = asyncio.run(orchestrator.route(AgentQueryRequest(query="Show deployment history")))
-    observability_response = asyncio.run(orchestrator.route(AgentQueryRequest(query="Show recent backend errors")))
+    cloudrun_response = asyncio.run(
+        orchestrator.route(AgentQueryRequest(query="Show deployment history", agent="CloudRunAgent"))
+    )
+    observability_response = asyncio.run(
+        orchestrator.route(AgentQueryRequest(query="Show recent backend errors", agent="ObservabilityAgent"))
+    )
 
     assert cloudrun_response.agent == "CloudRunAgent"
     assert cloudrun_response.success is True
     assert observability_response.agent == "ObservabilityAgent"
     assert observability_response.success is True
+
+
+class FakeYioAgent:
+    def __init__(self, name: str, result: dict[str, object], success: bool = True, error: str | None = None) -> None:
+        self.name = name
+        self.description = f"Fake {name}"
+        self.capabilities = []
+        self.result = result
+        self.success = success
+        self.error = error
+        self.queries: list[str] = []
+
+    def descriptor(self):
+        return {"name": self.name, "description": self.description, "capabilities": self.capabilities}
+
+    async def execute(self, query: str, context: dict[str, object] | None = None) -> AgentResponse:
+        self.queries.append(query)
+        return AgentResponse(agent=self.name, success=self.success, result=dict(self.result), error=self.error)
+
+
+def build_yio_registry(*agents: FakeYioAgent) -> AgentRegistry:
+    registry = AgentRegistry()
+    for agent in agents:
+        registry.register(agent)
+    return registry
+
+
+def test_yio_single_agent_routing() -> None:
+    registry = build_yio_registry(
+        FakeYioAgent("ObservabilityAgent", {"findings": [{"category": "Errors", "issue": "Login failures"}]})
+    )
+    response = asyncio.run(YenkasaIntelligenceOrchestrator(registry=registry).execute(query="Show recent backend errors"))
+
+    assert response.agent == "YIO"
+    assert response.success is True
+    assert response.result["plan"]["agents"] == ["ObservabilityAgent"]
+    assert response.result["findings"][0]["issue"] == "Login failures"
+
+
+def test_yio_multi_agent_planning() -> None:
+    classifier = IntentClassifier()
+    planner = ExecutionPlanner()
+
+    intents = classifier.classify("Audit notifications and check deployment health.")
+    plan = planner.plan(query="Audit notifications and check deployment health.", intents=intents)
+
+    assert "multi-agent" in intents
+    assert [step.agent for step in plan.steps] == [
+        "VectorSearchAgent",
+        "RepositoryAgent",
+        "CodeAuditAgent",
+        "CloudRunAgent",
+        "ObservabilityAgent",
+    ]
+
+
+def test_yio_response_synthesis() -> None:
+    plan = ExecutionPlanner().plan(query="Audit notifications.", intents=["audit"])
+    result = ResponseSynthesizer().synthesize(
+        query="Audit notifications.",
+        plan=plan,
+        responses=[
+            AgentResponse(agent="CodeAuditAgent", success=True, result={"findings": [{"category": "Security"}]}),
+            AgentResponse(
+                agent="VectorSearchAgent",
+                success=True,
+                result={"matches": [{"file_path": "notifications.py", "repository": "yenkasaChat"}]},
+            ),
+            AgentResponse(
+                agent="RefactorAgent",
+                success=True,
+                result={"recommendations": [{"category": "Architecture"}]},
+            ),
+        ],
+    )
+
+    assert result["findings"] == [{"category": "Security"}]
+    assert result["recommendations"] == [{"category": "Architecture"}]
+    assert result["evidence"][0]["file_path"] == "notifications.py"
+
+
+def test_yio_execution_failures() -> None:
+    registry = build_yio_registry(
+        FakeYioAgent("CloudRunAgent", {}, success=False, error="Cloud Run unavailable")
+    )
+    response = asyncio.run(YenkasaIntelligenceOrchestrator(registry=registry).execute(query="Analyze deployment health."))
+
+    assert response.agent == "YIO"
+    assert response.success is False
+    assert response.error == "One or more planned agents failed."
+    assert response.result["findings"][0]["category"] == "Execution"

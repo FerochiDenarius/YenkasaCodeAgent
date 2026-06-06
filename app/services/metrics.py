@@ -32,6 +32,9 @@ class AgentMetrics:
         self.observability_queries_total = 0
         self.observability_query_failures = 0
         self.observability_query_duration_ms = 0
+        self.yio_requests_total = 0
+        self.yio_failures_total = 0
+        self.yio_execution_duration_ms = 0
 
     async def record(self, *, success: bool) -> None:
         async with self._lock:
@@ -90,6 +93,13 @@ class AgentMetrics:
             if not success:
                 self.observability_query_failures += 1
 
+    async def record_yio_request(self, *, success: bool, duration_ms: int) -> None:
+        async with self._lock:
+            self.yio_requests_total += 1
+            self.yio_execution_duration_ms += duration_ms
+            if not success:
+                self.yio_failures_total += 1
+
     async def snapshot(self, *, registered_agents: list[str]) -> AgentMetricsResponse:
         async with self._lock:
             return AgentMetricsResponse(
@@ -118,4 +128,7 @@ class AgentMetrics:
                 observability_queries_total=self.observability_queries_total,
                 observability_query_failures=self.observability_query_failures,
                 observability_query_duration_ms=self.observability_query_duration_ms,
+                yio_requests_total=self.yio_requests_total,
+                yio_failures_total=self.yio_failures_total,
+                yio_execution_duration_ms=self.yio_execution_duration_ms,
             )
