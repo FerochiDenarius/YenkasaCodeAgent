@@ -32,6 +32,8 @@ from app.services.mongodb_service import MongoDBService
 from app.services.observability_service import ObservabilityService
 from app.services.product_builder_service import ProductBuilderService
 from app.services.refactor_service import RefactorService
+from app.security.auth import required_role_for_query
+from app.security.auth import _configured_keys
 
 
 VIEWER_HEADERS = {"X-API-Key": "dev-viewer-key"}
@@ -180,6 +182,29 @@ def test_viewer_cannot_run_admin_database_query() -> None:
 
     assert response.status_code == 403
     assert response.json() == {"detail": "Insufficient role."}
+
+
+def test_explicit_database_agent_requires_admin_role() -> None:
+    payload = AgentQueryRequest(query="How many repo chunks exist?", agent="DatabaseAgent")
+
+    assert required_role_for_query(payload) == "admin"
+
+
+def test_duplicate_api_key_keeps_highest_role() -> None:
+    class FakeState:
+        settings = Settings(
+            admin_api_key="same-key",
+            developer_api_key="same-key",
+            viewer_api_key="same-key",
+        )
+
+    class FakeApp:
+        state = FakeState()
+
+    class FakeRequest:
+        app = FakeApp()
+
+    assert _configured_keys(FakeRequest()) == {"same-key": "admin"}
 
 
 def test_oversized_query_is_rejected() -> None:

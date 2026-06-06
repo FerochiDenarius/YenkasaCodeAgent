@@ -1,12 +1,10 @@
+.git/
+.pytest_cache/
 __pycache__/
 *.pyc
-.pytest_cache/
 .venv/
 .venv*/
 venv/
 venv*/
 .env
-.git/
-.gitignore
-.gcloudignore
 *.log

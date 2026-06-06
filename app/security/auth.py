@@ -46,11 +46,14 @@ class AuthenticatedPrincipal:
 
 def _configured_keys(request: Request) -> dict[str, str]:
     settings = request.app.state.settings
-    configured = {
-        settings.admin_api_key: "admin",
-        settings.developer_api_key: "developer",
-        settings.viewer_api_key: "viewer",
-    }
+    configured: dict[str, str] = {}
+    for key, role in (
+        (settings.admin_api_key, "admin"),
+        (settings.developer_api_key, "developer"),
+        (settings.viewer_api_key, "viewer"),
+    ):
+        if key and (key not in configured or ROLE_RANK[role] > ROLE_RANK[configured[key]]):
+            configured[key] = role
     for item in settings.api_keys.split(","):
         if not item.strip() or ":" not in item:
             continue
@@ -58,7 +61,8 @@ def _configured_keys(request: Request) -> dict[str, str]:
         role = role.strip().lower()
         key = key.strip()
         if role in ROLE_RANK and key:
-            configured[key] = role
+            if key not in configured or ROLE_RANK[role] > ROLE_RANK[configured[key]]:
+                configured[key] = role
     return {key: role for key, role in configured.items() if key}
 
 
