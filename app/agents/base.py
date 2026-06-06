@@ -6,6 +6,7 @@ from typing import Any
 
 from app.models.agent import AgentDescriptor
 from app.models.agent import AgentResponse
+from app.security.redaction import sanitize_error
 
 
 class BaseAgent(ABC):
@@ -25,7 +26,7 @@ class BaseAgent(ABC):
             result = await self.run(query=query, context=context or {})
             return AgentResponse(agent=self.name, success=True, result=result)
         except Exception as exc:
-            return AgentResponse(agent=self.name, success=False, result={}, error=str(exc))
+            return AgentResponse(agent=self.name, success=False, result={}, error=sanitize_error(exc))
 
     @abstractmethod
     async def run(self, query: str, context: dict[str, Any]) -> dict[str, Any]:

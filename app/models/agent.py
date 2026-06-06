@@ -7,9 +7,9 @@ from pydantic import Field
 
 
 class AgentQueryRequest(BaseModel):
-    query: str = Field(min_length=1)
+    query: str = Field(min_length=1, max_length=2_000)
     agent: str | None = None
-    context: dict[str, Any] = Field(default_factory=dict)
+    context: dict[str, Any] = Field(default_factory=dict, max_length=50)
 
 
 class AgentResponse(BaseModel):

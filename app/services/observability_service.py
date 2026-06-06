@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC
 from datetime import datetime
 from datetime import timedelta
@@ -23,7 +24,7 @@ class ObservabilityService:
         return self._logging_client
 
     async def error_summary(self, *, query: str, hours: int = 24) -> dict[str, Any]:
-        entries = self._recent_entries(severity="ERROR", query=query, hours=hours)
+        entries = await self._recent_entries_async(severity="ERROR", query=query, hours=hours)
         return {
             "window_hours": hours,
             "error_count": len(entries),
@@ -32,7 +33,7 @@ class ObservabilityService:
         }
 
     async def log_summary(self, *, query: str, hours: int = 24) -> dict[str, Any]:
-        entries = self._recent_entries(severity=None, query=query, hours=hours)
+        entries = await self._recent_entries_async(severity=None, query=query, hours=hours)
         return {
             "window_hours": hours,
             "log_count": len(entries),
@@ -40,7 +41,7 @@ class ObservabilityService:
         }
 
     async def performance_metrics(self, *, query: str, hours: int = 24) -> dict[str, Any]:
-        entries = self._recent_entries(severity=None, query=query, hours=hours)
+        entries = await self._recent_entries_async(severity=None, query=query, hours=hours)
         slow_entries = [entry for entry in entries if "slow" in str(entry.get("message", "")).lower()]
         return {
             "window_hours": hours,
@@ -50,7 +51,7 @@ class ObservabilityService:
         }
 
     async def request_trends(self, *, query: str, hours: int = 24) -> dict[str, Any]:
-        entries = self._recent_entries(severity=None, query=query, hours=hours)
+        entries = await self._recent_entries_async(severity=None, query=query, hours=hours)
         return {
             "window_hours": hours,
             "request_count": len(entries),
@@ -64,6 +65,16 @@ class ObservabilityService:
             "error_count": summary["error_count"],
             "signals": summary["errors"],
         }
+
+    async def readiness_check(self) -> bool:
+        await self.log_summary(query="", hours=1)
+        return True
+
+    async def _recent_entries_async(self, *, severity: str | None, query: str, hours: int) -> list[dict[str, Any]]:
+        return await asyncio.wait_for(
+            asyncio.to_thread(self._recent_entries, severity=severity, query=query[:120], hours=hours),
+            timeout=self.settings.external_timeout_seconds,
+        )
 
     def _recent_entries(self, *, severity: str | None, query: str, hours: int) -> list[dict[str, Any]]:
         if not self.settings.google_cloud_project:

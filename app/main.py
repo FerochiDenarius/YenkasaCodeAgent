@@ -12,8 +12,10 @@ from app.config.settings import get_settings
 from app.core.logging import configure_logging
 from app.core.orchestrator import YenkasaCodeOrchestrator
 from app.middleware import RequestIDMiddleware
+from app.middleware.request_limits import RequestSizeLimitMiddleware
 from app.routers.agent import router as agent_router
 from app.routers.health import router as health_router
+from app.security.rate_limit import RateLimiter
 from app.services.cloudrun_service import CloudRunService
 from app.services.embedding_service import EmbeddingService
 from app.services.mongodb_service import MongoDBService
@@ -32,6 +34,7 @@ async def lifespan(app: FastAPI):
     app.state.embedding_service = EmbeddingService(settings)
     app.state.cloudrun_service = CloudRunService(settings)
     app.state.observability_service = ObservabilityService(settings)
+    app.state.rate_limiter = RateLimiter(settings)
     app.state.orchestrator = YenkasaCodeOrchestrator(
         mongodb=app.state.mongodb,
         embedding_service=app.state.embedding_service,
@@ -55,7 +58,7 @@ def create_app() -> FastAPI:
     @app.exception_handler(RequestValidationError)
     async def validation_error_handler(request: Request, exc: RequestValidationError):
         LOGGER.warning("Request validation failed path=%s errors=%s", request.url.path, exc.errors())
-        return JSONResponse(status_code=422, content={"detail": exc.errors()})
+        return JSONResponse(status_code=422, content={"detail": "Invalid request."})
 
     @app.exception_handler(Exception)
     async def unhandled_error_handler(request: Request, exc: Exception):
@@ -63,6 +66,7 @@ def create_app() -> FastAPI:
         return JSONResponse(status_code=500, content={"detail": "Internal server error."})
 
     app.add_middleware(RequestIDMiddleware)
+    app.add_middleware(RequestSizeLimitMiddleware)
     app.include_router(health_router)
     app.include_router(agent_router)
     return app

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from app.config.settings import Settings
@@ -25,12 +26,15 @@ class CloudRunService:
         if not self.settings.cloud_run_service:
             raise RuntimeError("CLOUD_RUN_SERVICE is not configured.")
         return (
-            f"projects/{self.settings.google_cloud_project}/locations/{self.settings.vertex_location}/"
+            f"projects/{self.settings.google_cloud_project}/locations/{self.settings.cloud_run_location}/"
             f"services/{self.settings.cloud_run_service}"
         )
 
     async def service_status(self) -> dict[str, Any]:
-        service = await self._get_services_client().get_service(name=self._service_name())
+        service = await asyncio.wait_for(
+            self._get_services_client().get_service(name=self._service_name()),
+            timeout=self.settings.external_timeout_seconds,
+        )
         return {
             "service": service.name,
             "url": getattr(service, "uri", None),
@@ -100,3 +104,7 @@ class CloudRunService:
         latest_ready_revision = getattr(service, "latest_ready_revision", None)
         traffic = self._traffic_allocations(getattr(service, "traffic", []))
         return bool(latest_ready_revision and any(int(target.get("percent") or 0) > 0 for target in traffic))
+
+    async def readiness_check(self) -> bool:
+        await self.service_status()
+        return True

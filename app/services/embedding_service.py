@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 from app.config.settings import Settings
 
 
@@ -25,10 +27,18 @@ class EmbeddingService:
 
     async def embed_query(self, text: str) -> list[float]:
         client = self._get_client()
-        response = client.models.embed_content(
-            model=self.settings.vertex_embedding_model,
-            contents=[text],
+        response = await asyncio.wait_for(
+            asyncio.to_thread(
+                client.models.embed_content,
+                model=self.settings.vertex_embedding_model,
+                contents=[text],
+            ),
+            timeout=self.settings.external_timeout_seconds,
         )
         if not response.embeddings:
             raise RuntimeError("Vertex AI returned no embeddings.")
         return list(response.embeddings[0].values)
+
+    async def readiness_check(self) -> bool:
+        await self.embed_query("readiness check")
+        return True

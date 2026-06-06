@@ -20,6 +20,22 @@ class Settings(BaseSettings):
     google_application_credentials: str = ""
     cloud_run_service: str = ""
     log_level: str = "INFO"
+    admin_api_key: str = "dev-admin-key"
+    developer_api_key: str = "dev-developer-key"
+    viewer_api_key: str = "dev-viewer-key"
+    api_keys: str = ""
+    max_request_bytes: int = 65_536
+    max_query_length: int = 2_000
+    max_context_keys: int = 50
+    rate_limit_per_minute: int = 60
+    rate_limit_burst: int = 20
+    expensive_rate_limit_per_minute: int = 20
+    external_timeout_seconds: float = 10.0
+    mongodb_server_selection_timeout_ms: int = 5_000
+    mongodb_socket_timeout_ms: int = 10_000
+    mongodb_max_pool_size: int = 50
+    mongodb_aggregate_limit: int = 100
+    cloud_run_location: str = "us-central1"
 
     @property
     def environment(self) -> str:

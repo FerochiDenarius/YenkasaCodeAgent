@@ -34,9 +34,14 @@ from app.services.product_builder_service import ProductBuilderService
 from app.services.refactor_service import RefactorService
 
 
+VIEWER_HEADERS = {"X-API-Key": "dev-viewer-key"}
+DEVELOPER_HEADERS = {"X-API-Key": "dev-developer-key"}
+ADMIN_HEADERS = {"X-API-Key": "dev-admin-key"}
+
+
 def test_health_endpoint() -> None:
     with TestClient(app) as client:
-        response = client.get("/health")
+        response = client.get("/health", headers=VIEWER_HEADERS)
 
     assert response.status_code == 200
     assert response.headers["X-Request-ID"]
@@ -50,7 +55,11 @@ def test_health_endpoint() -> None:
 
 def test_agent_query_routes_to_system_agent() -> None:
     with TestClient(app) as client:
-        response = client.post("/api/agent/query", json={"query": "status", "agent": "system"})
+        response = client.post(
+            "/api/agent/query",
+            json={"query": "status", "agent": "system"},
+            headers=VIEWER_HEADERS,
+        )
 
     assert response.status_code == 200
     assert response.headers["X-Request-ID"]
@@ -70,7 +79,7 @@ def test_agent_query_routes_to_system_agent() -> None:
 
 def test_agent_discovery() -> None:
     with TestClient(app) as client:
-        response = client.get("/api/agent/agents")
+        response = client.get("/api/agent/agents", headers=VIEWER_HEADERS)
 
     assert response.status_code == 200
     payload = response.json()
@@ -87,7 +96,7 @@ def test_agent_discovery() -> None:
 
 def test_request_id_header_is_preserved() -> None:
     with TestClient(app) as client:
-        response = client.get("/health", headers={"X-Request-ID": "test-request-id"})
+        response = client.get("/health", headers={"X-Request-ID": "test-request-id", **VIEWER_HEADERS})
 
     assert response.status_code == 200
     assert response.headers["X-Request-ID"] == "test-request-id"
@@ -95,7 +104,7 @@ def test_request_id_header_is_preserved() -> None:
 
 def test_agent_metrics() -> None:
     with TestClient(app) as client:
-        response = client.get("/api/agent/metrics")
+        response = client.get("/api/agent/metrics", headers=ADMIN_HEADERS)
 
     assert response.status_code == 200
     payload = response.json()
@@ -143,6 +152,56 @@ def test_agent_metrics() -> None:
         "ObservabilityAgent",
         "ProductBuilderAgent",
     ]
+
+
+def test_protected_endpoint_rejects_missing_api_key() -> None:
+    with TestClient(app) as client:
+        response = client.get("/api/agent/agents")
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Missing API key."}
+
+
+def test_viewer_cannot_access_admin_metrics() -> None:
+    with TestClient(app) as client:
+        response = client.get("/api/agent/metrics", headers=VIEWER_HEADERS)
+
+    assert response.status_code == 403
+    assert response.json() == {"detail": "Insufficient role."}
+
+
+def test_viewer_cannot_run_admin_database_query() -> None:
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/agent/query",
+            json={"query": "How many repo chunks exist?"},
+            headers=VIEWER_HEADERS,
+        )
+
+    assert response.status_code == 403
+    assert response.json() == {"detail": "Insufficient role."}
+
+
+def test_oversized_query_is_rejected() -> None:
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/agent/query",
+            json={"query": "x" * 2001},
+            headers=ADMIN_HEADERS,
+        )
+
+    assert response.status_code == 422
+    assert response.json() == {"detail": "Invalid request."}
+
+
+def test_readiness_reports_unconfigured_external_services() -> None:
+    with TestClient(app) as client:
+        response = client.get("/ready", headers=ADMIN_HEADERS)
+
+    assert response.status_code == 503
+    payload = response.json()
+    assert payload["status"] == "not_ready"
+    assert set(payload["checks"]) == {"mongodb", "vertex_ai", "cloud_run", "cloud_logging"}
 
 
 class FakeCommandDatabase:
