@@ -9,12 +9,18 @@ from pydantic_settings import SettingsConfigDict
 class Settings(BaseSettings):
     app_name: str = "YenkasaCode Agent"
     app_version: str = "0.1.0"
-    environment: str = "development"
+    app_env: str = "development"
+    app_port: int = 8080
+    mongodb_uri: str = ""
+    mongodb_database: str = "yenkasa_code"
     log_level: str = "INFO"
+
+    @property
+    def environment(self) -> str:
+        return self.app_env
 
     model_config = SettingsConfigDict(
         env_file=".env",
-        env_prefix="YENKASA_CODE_",
         extra="ignore",
     )
 

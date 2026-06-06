@@ -29,4 +29,12 @@ uvicorn app.main:app --reload
 GET /health
 POST /api/agent/query
 GET /api/agent/agents
+GET /api/agent/metrics
+```
+
+## Docker
+
+```bash
+docker build -t yenkasa-code-agent .
+docker run --rm -p 8080:8080 --env-file .env.example yenkasa-code-agent
 ```

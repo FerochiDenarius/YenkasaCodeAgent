@@ -1,0 +1,9 @@
+services:
+  yenkasa-code-agent:
+    build: .
+    env_file:
+      - .env.example
+    environment:
+      PORT: ${PORT:-8080}
+    ports:
+      - "${APP_PORT:-8080}:${PORT:-8080}"

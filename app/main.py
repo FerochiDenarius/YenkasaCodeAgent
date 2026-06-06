@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse
 from app.config.settings import get_settings
 from app.core.logging import configure_logging
 from app.core.orchestrator import YenkasaCodeOrchestrator
+from app.middleware import RequestIDMiddleware
 from app.routers.agent import router as agent_router
 from app.routers.health import router as health_router
 
@@ -47,6 +48,7 @@ def create_app() -> FastAPI:
         LOGGER.exception("Unhandled request error path=%s", request.url.path)
         return JSONResponse(status_code=500, content={"detail": "Internal server error."})
 
+    app.add_middleware(RequestIDMiddleware)
     app.include_router(health_router)
     app.include_router(agent_router)
     return app

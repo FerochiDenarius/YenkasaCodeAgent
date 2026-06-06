@@ -15,7 +15,6 @@ async def health(request: Request) -> HealthResponse:
     orchestrator = request.app.state.orchestrator
     return HealthResponse(
         status="ok",
-        service=settings.app_name,
         version=settings.app_version,
-        agents=orchestrator.registry.names(),
+        registered_agents=len(orchestrator.registry.names()),
     )
