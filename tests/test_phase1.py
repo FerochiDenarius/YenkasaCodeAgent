@@ -4,8 +4,10 @@ import asyncio
 
 from fastapi.testclient import TestClient
 
+from app.agents.cloudrun_agent import CloudRunAgent
 from app.agents.code_audit_agent import CodeAuditAgent
 from app.agents.database_agent import DatabaseAgent
+from app.agents.observability_agent import ObservabilityAgent
 from app.agents.refactor_agent import RefactorAgent
 from app.agents.repository_agent import RepositoryAgent
 from app.agents.vector_search_agent import VectorSearchAgent
@@ -18,7 +20,9 @@ from app.repositories.repo_chunks_repository import RepoChunksRepository
 from app.repositories.repository_intelligence_repository import RepositoryIntelligenceRepository
 from app.repositories.vector_search_repository import VectorSearchRepository
 from app.services.audit_service import AuditService
+from app.services.cloudrun_service import CloudRunService
 from app.services.mongodb_service import MongoDBService
+from app.services.observability_service import ObservabilityService
 from app.services.refactor_service import RefactorService
 
 
@@ -32,7 +36,7 @@ def test_health_endpoint() -> None:
     assert payload == {
         "status": "ok",
         "version": "0.1.0",
-        "registered_agents": 6,
+        "registered_agents": 8,
     }
 
 
@@ -68,6 +72,8 @@ def test_agent_discovery() -> None:
     assert payload[3]["name"] == "VectorSearchAgent"
     assert payload[4]["name"] == "CodeAuditAgent"
     assert payload[5]["name"] == "RefactorAgent"
+    assert payload[6]["name"] == "CloudRunAgent"
+    assert payload[7]["name"] == "ObservabilityAgent"
 
 
 def test_request_id_header_is_preserved() -> None:
@@ -104,6 +110,12 @@ def test_agent_metrics() -> None:
         "refactor_queries_total",
         "refactor_query_failures",
         "refactor_query_duration_ms",
+        "cloudrun_queries_total",
+        "cloudrun_query_failures",
+        "cloudrun_query_duration_ms",
+        "observability_queries_total",
+        "observability_query_failures",
+        "observability_query_duration_ms",
     }
     assert payload["registered_agents"] == [
         "system",
@@ -112,6 +124,8 @@ def test_agent_metrics() -> None:
         "VectorSearchAgent",
         "CodeAuditAgent",
         "RefactorAgent",
+        "CloudRunAgent",
+        "ObservabilityAgent",
     ]
 
 
@@ -719,3 +733,134 @@ def test_refactor_routing_behavior() -> None:
 
     assert response.agent == "RefactorAgent"
     assert response.success is True
+
+
+class FakeCloudRunService:
+    async def service_status(self) -> dict[str, object]:
+        return {
+            "service": "yenkasa-ai",
+            "url": "https://yenkasa-ai.example.run.app",
+            "latest_ready_revision": "yenkasa-ai-00012",
+            "latest_created_revision": "yenkasa-ai-00013",
+            "traffic": [{"revision": "yenkasa-ai-00012", "percent": 100, "tag": None}],
+            "healthy": True,
+        }
+
+    async def revision_status(self) -> dict[str, object]:
+        return {
+            "service": "yenkasa-ai",
+            "live_revision": "yenkasa-ai-00012",
+            "latest_ready_revision": "yenkasa-ai-00012",
+            "latest_created_revision": "yenkasa-ai-00013",
+        }
+
+    async def traffic_allocation(self) -> dict[str, object]:
+        return {"service": "yenkasa-ai", "traffic": [{"revision": "yenkasa-ai-00012", "percent": 100}]}
+
+    async def deployment_history(self) -> dict[str, object]:
+        return {
+            "service": "yenkasa-ai",
+            "revisions": [
+                {"revision": "yenkasa-ai-00012", "state": "READY"},
+                {"revision": "yenkasa-ai-00013", "state": "CREATED"},
+            ],
+        }
+
+    async def deployment_health(self) -> dict[str, object]:
+        return {"service": "yenkasa-ai", "healthy": True, "latest_ready_revision": "yenkasa-ai-00012"}
+
+
+class FakeObservabilityService:
+    async def error_summary(self, *, query: str, hours: int = 24) -> dict[str, object]:
+        return {
+            "window_hours": hours,
+            "error_count": 2,
+            "errors": [
+                {"severity": "ERROR", "message": "login failed: invalid token"},
+                {"severity": "ERROR", "message": "login failed: timeout"},
+            ],
+            "incident_detected": False,
+        }
+
+    async def log_summary(self, *, query: str, hours: int = 24) -> dict[str, object]:
+        return {
+            "window_hours": hours,
+            "log_count": 1,
+            "logs": [{"severity": "INFO", "message": "notification sent"}],
+        }
+
+    async def performance_metrics(self, *, query: str, hours: int = 24) -> dict[str, object]:
+        return {"window_hours": hours, "request_count": 10, "slow_request_indicators": 1}
+
+    async def request_trends(self, *, query: str, hours: int = 24) -> dict[str, object]:
+        return {"window_hours": hours, "request_count": 10, "trend": "activity_detected"}
+
+    async def incident_detection(self, *, query: str, hours: int = 24) -> dict[str, object]:
+        return {"incident_detected": True, "error_count": 8, "signals": []}
+
+
+def test_cloudrun_service_status() -> None:
+    response = asyncio.run(CloudRunAgent(FakeCloudRunService()).execute("Show Cloud Run status"))
+
+    assert response.agent == "CloudRunAgent"
+    assert response.success is True
+    assert response.result["service_status"]["healthy"] is True
+    assert response.result["service_status"]["latest_ready_revision"] == "yenkasa-ai-00012"
+
+
+def test_cloudrun_revision_retrieval() -> None:
+    response = asyncio.run(CloudRunAgent(FakeCloudRunService()).execute("Which revision is live?"))
+
+    assert response.success is True
+    assert response.result == {
+        "revision_status": {
+            "service": "yenkasa-ai",
+            "live_revision": "yenkasa-ai-00012",
+            "latest_ready_revision": "yenkasa-ai-00012",
+            "latest_created_revision": "yenkasa-ai-00013",
+        }
+    }
+
+
+def test_cloudrun_deployment_history() -> None:
+    response = asyncio.run(CloudRunAgent(FakeCloudRunService()).execute("Show deployment history"))
+
+    assert response.success is True
+    assert response.result["deployment_history"]["revisions"][0]["state"] == "READY"
+
+
+def test_observability_error_summary() -> None:
+    response = asyncio.run(ObservabilityAgent(FakeObservabilityService()).execute("Why is login failing?"))
+
+    assert response.agent == "ObservabilityAgent"
+    assert response.success is True
+    assert response.result["error_summary"]["error_count"] == 2
+
+
+def test_observability_log_summary() -> None:
+    response = asyncio.run(ObservabilityAgent(FakeObservabilityService()).execute("Show recent backend logs"))
+
+    assert response.success is True
+    assert response.result == {
+        "log_summary": {
+            "window_hours": 24,
+            "log_count": 1,
+            "logs": [{"severity": "INFO", "message": "notification sent"}],
+        }
+    }
+
+
+def test_cloudrun_and_observability_routing() -> None:
+    orchestrator = YenkasaCodeOrchestrator(
+        mongodb=FakeVectorMongoDBService(),
+        embedding_service=FakeEmbeddingService(),
+        cloudrun_service=FakeCloudRunService(),
+        observability_service=FakeObservabilityService(),
+    )
+    cloudrun_response = asyncio.run(orchestrator.route(AgentQueryRequest(query="Show deployment history")))
+    observability_response = asyncio.run(orchestrator.route(AgentQueryRequest(query="Show recent backend errors")))
+
+    assert cloudrun_response.agent == "CloudRunAgent"
+    assert cloudrun_response.success is True
+    assert observability_response.agent == "ObservabilityAgent"
+    assert observability_response.success is True

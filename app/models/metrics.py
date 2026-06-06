@@ -23,3 +23,9 @@ class AgentMetricsResponse(BaseModel):
     refactor_queries_total: int
     refactor_query_failures: int
     refactor_query_duration_ms: int
+    cloudrun_queries_total: int
+    cloudrun_query_failures: int
+    cloudrun_query_duration_ms: int
+    observability_queries_total: int
+    observability_query_failures: int
+    observability_query_duration_ms: int

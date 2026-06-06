@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     vertex_project_id: str = ""
     vertex_location: str = "us-central1"
     vertex_embedding_model: str = "gemini-embedding-001"
+    google_cloud_project: str = "project-10405180-0afd-4ecc-9f8"
+    google_application_credentials: str = ""
+    cloud_run_service: str = ""
     log_level: str = "INFO"
 
     @property

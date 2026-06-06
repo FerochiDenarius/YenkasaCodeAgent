@@ -26,6 +26,12 @@ class AgentMetrics:
         self.refactor_queries_total = 0
         self.refactor_query_failures = 0
         self.refactor_query_duration_ms = 0
+        self.cloudrun_queries_total = 0
+        self.cloudrun_query_failures = 0
+        self.cloudrun_query_duration_ms = 0
+        self.observability_queries_total = 0
+        self.observability_query_failures = 0
+        self.observability_query_duration_ms = 0
 
     async def record(self, *, success: bool) -> None:
         async with self._lock:
@@ -70,6 +76,20 @@ class AgentMetrics:
             if not success:
                 self.refactor_query_failures += 1
 
+    async def record_cloudrun_query(self, *, success: bool, duration_ms: int) -> None:
+        async with self._lock:
+            self.cloudrun_queries_total += 1
+            self.cloudrun_query_duration_ms += duration_ms
+            if not success:
+                self.cloudrun_query_failures += 1
+
+    async def record_observability_query(self, *, success: bool, duration_ms: int) -> None:
+        async with self._lock:
+            self.observability_queries_total += 1
+            self.observability_query_duration_ms += duration_ms
+            if not success:
+                self.observability_query_failures += 1
+
     async def snapshot(self, *, registered_agents: list[str]) -> AgentMetricsResponse:
         async with self._lock:
             return AgentMetricsResponse(
@@ -92,4 +112,10 @@ class AgentMetrics:
                 refactor_queries_total=self.refactor_queries_total,
                 refactor_query_failures=self.refactor_query_failures,
                 refactor_query_duration_ms=self.refactor_query_duration_ms,
+                cloudrun_queries_total=self.cloudrun_queries_total,
+                cloudrun_query_failures=self.cloudrun_query_failures,
+                cloudrun_query_duration_ms=self.cloudrun_query_duration_ms,
+                observability_queries_total=self.observability_queries_total,
+                observability_query_failures=self.observability_query_failures,
+                observability_query_duration_ms=self.observability_query_duration_ms,
             )

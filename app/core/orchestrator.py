@@ -4,8 +4,10 @@ import logging
 import time
 
 from app.agents import AgentRegistry
+from app.agents import CloudRunAgent
 from app.agents import CodeAuditAgent
 from app.agents import DatabaseAgent
+from app.agents import ObservabilityAgent
 from app.agents import RefactorAgent
 from app.agents import RepositoryAgent
 from app.agents import SystemAgent
@@ -20,9 +22,11 @@ from app.repositories import RepoChunksRepository
 from app.repositories import RepositoryIntelligenceRepository
 from app.repositories import VectorSearchRepository
 from app.services.audit_service import AuditService
+from app.services.cloudrun_service import CloudRunService
 from app.services.embedding_service import EmbeddingService
 from app.services.metrics import AgentMetrics
 from app.services.mongodb_service import MongoDBService
+from app.services.observability_service import ObservabilityService
 from app.services.refactor_service import RefactorService
 
 
@@ -78,6 +82,26 @@ class YenkasaCodeOrchestrator:
         "extract service",
         "optimize structure",
     )
+    cloudrun_intent_keywords = (
+        "deployment",
+        "cloud run",
+        "revision",
+        "service status",
+        "traffic",
+        "health",
+        "healthy",
+    )
+    observability_intent_keywords = (
+        "logs",
+        "error",
+        "errors",
+        "failure",
+        "failures",
+        "failing",
+        "performance",
+        "incident",
+        "monitoring",
+    )
 
     def __init__(
         self,
@@ -85,11 +109,15 @@ class YenkasaCodeOrchestrator:
         metrics: AgentMetrics | None = None,
         mongodb: MongoDBService | None = None,
         embedding_service: EmbeddingService | None = None,
+        cloudrun_service: CloudRunService | None = None,
+        observability_service: ObservabilityService | None = None,
     ) -> None:
         self.registry = registry or AgentRegistry()
         self.metrics = metrics or AgentMetrics()
         self.mongodb = mongodb
         self.embedding_service = embedding_service
+        self.cloudrun_service = cloudrun_service
+        self.observability_service = observability_service
         self._register_foundation_agents()
 
     def _register_foundation_agents(self) -> None:
@@ -144,6 +172,10 @@ class YenkasaCodeOrchestrator:
                         )
                     )
                 )
+        if self.cloudrun_service is not None and self.registry.get(CloudRunAgent.name) is None:
+            self.registry.register(CloudRunAgent(cloudrun_service=self.cloudrun_service))
+        if self.observability_service is not None and self.registry.get(ObservabilityAgent.name) is None:
+            self.registry.register(ObservabilityAgent(observability_service=self.observability_service))
 
     def discover_agents(self) -> list[AgentDescriptor]:
         return self.registry.list_agents()
@@ -184,6 +216,10 @@ class YenkasaCodeOrchestrator:
             await self.metrics.record_audit_query(success=response.success, duration_ms=duration_ms)
         if agent.name == RefactorAgent.name:
             await self.metrics.record_refactor_query(success=response.success, duration_ms=duration_ms)
+        if agent.name == CloudRunAgent.name:
+            await self.metrics.record_cloudrun_query(success=response.success, duration_ms=duration_ms)
+        if agent.name == ObservabilityAgent.name:
+            await self.metrics.record_observability_query(success=response.success, duration_ms=duration_ms)
         log_structured(
             LOGGER,
             logging.INFO if response.success else logging.ERROR,
@@ -197,6 +233,14 @@ class YenkasaCodeOrchestrator:
 
     def _select_agent(self, query: str) -> str:
         normalized = query.lower()
+        if self.registry.get(ObservabilityAgent.name) is not None and any(
+            keyword in normalized for keyword in self.observability_intent_keywords
+        ):
+            return ObservabilityAgent.name
+        if self.registry.get(CloudRunAgent.name) is not None and any(
+            keyword in normalized for keyword in self.cloudrun_intent_keywords
+        ):
+            return CloudRunAgent.name
         if self.registry.get(RefactorAgent.name) is not None and any(
             keyword in normalized for keyword in self.refactor_intent_keywords
         ):

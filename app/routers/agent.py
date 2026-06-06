@@ -4,8 +4,10 @@ from fastapi import APIRouter
 from fastapi import Request
 
 from app.core.orchestrator import YenkasaCodeOrchestrator
+from app.services.cloudrun_service import CloudRunService
 from app.services.embedding_service import EmbeddingService
 from app.services.mongodb_service import MongoDBService
+from app.services.observability_service import ObservabilityService
 from app.models.agent import AgentDescriptor
 from app.models.agent import AgentQueryRequest
 from app.models.agent import AgentResponse
@@ -26,7 +28,20 @@ def get_orchestrator(request: Request) -> YenkasaCodeOrchestrator:
         if embedding_service is None:
             embedding_service = EmbeddingService(request.app.state.settings)
             request.app.state.embedding_service = embedding_service
-        orchestrator = YenkasaCodeOrchestrator(mongodb=mongodb, embedding_service=embedding_service)
+        cloudrun_service = getattr(request.app.state, "cloudrun_service", None)
+        if cloudrun_service is None:
+            cloudrun_service = CloudRunService(request.app.state.settings)
+            request.app.state.cloudrun_service = cloudrun_service
+        observability_service = getattr(request.app.state, "observability_service", None)
+        if observability_service is None:
+            observability_service = ObservabilityService(request.app.state.settings)
+            request.app.state.observability_service = observability_service
+        orchestrator = YenkasaCodeOrchestrator(
+            mongodb=mongodb,
+            embedding_service=embedding_service,
+            cloudrun_service=cloudrun_service,
+            observability_service=observability_service,
+        )
         request.app.state.orchestrator = orchestrator
     return orchestrator
 
