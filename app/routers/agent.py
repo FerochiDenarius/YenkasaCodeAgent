@@ -4,6 +4,7 @@ from fastapi import APIRouter
 from fastapi import Request
 
 from app.core.orchestrator import YenkasaCodeOrchestrator
+from app.services.mongodb_service import MongoDBService
 from app.models.agent import AgentDescriptor
 from app.models.agent import AgentQueryRequest
 from app.models.agent import AgentResponse
@@ -16,7 +17,11 @@ router = APIRouter(prefix="/api/agent", tags=["Agent"])
 def get_orchestrator(request: Request) -> YenkasaCodeOrchestrator:
     orchestrator = getattr(request.app.state, "orchestrator", None)
     if orchestrator is None:
-        orchestrator = YenkasaCodeOrchestrator()
+        mongodb = getattr(request.app.state, "mongodb", None)
+        if mongodb is None:
+            mongodb = MongoDBService(request.app.state.settings)
+            request.app.state.mongodb = mongodb
+        orchestrator = YenkasaCodeOrchestrator(mongodb=mongodb)
         request.app.state.orchestrator = orchestrator
     return orchestrator
 

@@ -8,3 +8,9 @@ class AgentMetricsResponse(BaseModel):
     successful_requests: int
     failed_requests: int
     registered_agents: list[str]
+    database_queries_total: int
+    database_query_failures: int
+    database_query_duration_ms: int
+    repository_queries_total: int
+    repository_query_failures: int
+    repository_query_duration_ms: int

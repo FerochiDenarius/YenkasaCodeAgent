@@ -11,6 +11,12 @@ class AgentMetrics:
         self.total_requests = 0
         self.successful_requests = 0
         self.failed_requests = 0
+        self.database_queries_total = 0
+        self.database_query_failures = 0
+        self.database_query_duration_ms = 0
+        self.repository_queries_total = 0
+        self.repository_query_failures = 0
+        self.repository_query_duration_ms = 0
 
     async def record(self, *, success: bool) -> None:
         async with self._lock:
@@ -20,6 +26,20 @@ class AgentMetrics:
             else:
                 self.failed_requests += 1
 
+    async def record_database_query(self, *, success: bool, duration_ms: int) -> None:
+        async with self._lock:
+            self.database_queries_total += 1
+            self.database_query_duration_ms += duration_ms
+            if not success:
+                self.database_query_failures += 1
+
+    async def record_repository_query(self, *, success: bool, duration_ms: int) -> None:
+        async with self._lock:
+            self.repository_queries_total += 1
+            self.repository_query_duration_ms += duration_ms
+            if not success:
+                self.repository_query_failures += 1
+
     async def snapshot(self, *, registered_agents: list[str]) -> AgentMetricsResponse:
         async with self._lock:
             return AgentMetricsResponse(
@@ -27,4 +47,10 @@ class AgentMetrics:
                 successful_requests=self.successful_requests,
                 failed_requests=self.failed_requests,
                 registered_agents=registered_agents,
+                database_queries_total=self.database_queries_total,
+                database_query_failures=self.database_query_failures,
+                database_query_duration_ms=self.database_query_duration_ms,
+                repository_queries_total=self.repository_queries_total,
+                repository_query_failures=self.repository_query_failures,
+                repository_query_duration_ms=self.repository_query_duration_ms,
             )
