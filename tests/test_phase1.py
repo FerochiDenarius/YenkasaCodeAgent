@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 
 from app.agents.database_agent import DatabaseAgent
 from app.agents.repository_agent import RepositoryAgent
+from app.agents.vector_search_agent import VectorSearchAgent
 from app.config.settings import Settings
 from app.core.orchestrator import YenkasaCodeOrchestrator
 from app.main import app
@@ -13,6 +14,7 @@ from app.models.agent import AgentQueryRequest
 from app.repositories.memory_embeddings_repository import MemoryEmbeddingsRepository
 from app.repositories.repo_chunks_repository import RepoChunksRepository
 from app.repositories.repository_intelligence_repository import RepositoryIntelligenceRepository
+from app.repositories.vector_search_repository import VectorSearchRepository
 from app.services.mongodb_service import MongoDBService
 
 
@@ -26,7 +28,7 @@ def test_health_endpoint() -> None:
     assert payload == {
         "status": "ok",
         "version": "0.1.0",
-        "registered_agents": 3,
+        "registered_agents": 4,
     }
 
 
@@ -59,6 +61,7 @@ def test_agent_discovery() -> None:
     assert payload[0]["name"] == "system"
     assert payload[1]["name"] == "DatabaseAgent"
     assert payload[2]["name"] == "RepositoryAgent"
+    assert payload[3]["name"] == "VectorSearchAgent"
 
 
 def test_request_id_header_is_preserved() -> None:
@@ -86,8 +89,11 @@ def test_agent_metrics() -> None:
         "repository_queries_total",
         "repository_query_failures",
         "repository_query_duration_ms",
+        "vector_queries_total",
+        "vector_query_failures",
+        "vector_query_duration_ms",
     }
-    assert payload["registered_agents"] == ["system", "DatabaseAgent", "RepositoryAgent"]
+    assert payload["registered_agents"] == ["system", "DatabaseAgent", "RepositoryAgent", "VectorSearchAgent"]
 
 
 class FakeCommandDatabase:
@@ -334,4 +340,92 @@ def test_repository_agent_routing_behavior() -> None:
     response = asyncio.run(orchestrator.route(AgentQueryRequest(query="Show repository inventory")))
 
     assert response.agent == "RepositoryAgent"
+    assert response.success is True
+
+
+class FakeEmbeddingService:
+    async def embed_query(self, text: str) -> list[float]:
+        assert text
+        return [0.1, 0.2, 0.3]
+
+
+class FakeVectorMongoDBService:
+    async def aggregate(self, collection_name: str, pipeline: list[dict[str, object]]) -> list[dict[str, object]]:
+        assert pipeline[0]["$vectorSearch"]["queryVector"] == [0.1, 0.2, 0.3]
+        if collection_name == "memory_embeddings":
+            return [
+                {
+                    "file_path": None,
+                    "repository": "yenkasaChat",
+                    "score": 0.91,
+                    "snippet": "User memory about authentication decisions.",
+                }
+            ]
+        assert collection_name == "repo_chunks"
+        return [
+            {
+                "file_path": "backend/auth/jwt.py",
+                "repository": "yenkasaChat",
+                "score": 0.94,
+                "snippet": "def verify_jwt(token): ...",
+            }
+        ]
+
+
+def build_vector_search_agent(mongodb: FakeVectorMongoDBService | None = None) -> VectorSearchAgent:
+    return VectorSearchAgent(
+        embedding_service=FakeEmbeddingService(),
+        vector_search_repository=VectorSearchRepository(mongodb or FakeVectorMongoDBService()),
+    )
+
+
+def test_vector_semantic_search() -> None:
+    response = asyncio.run(build_vector_search_agent().execute("Find JWT authentication"))
+
+    assert response.agent == "VectorSearchAgent"
+    assert response.success is True
+    assert response.result == {
+        "matches": [
+            {
+                "file_path": "backend/auth/jwt.py",
+                "repository": "yenkasaChat",
+                "similarity_score": 0.94,
+                "snippet": "def verify_jwt(token): ...",
+            }
+        ]
+    }
+
+
+def test_vector_architecture_search() -> None:
+    response = asyncio.run(build_vector_search_agent().execute("Find post approval workflow"))
+
+    assert response.success is True
+    assert response.result["matches"][0]["repository"] == "yenkasaChat"
+    assert response.result["matches"][0]["file_path"] == "backend/auth/jwt.py"
+
+
+def test_vector_memory_search() -> None:
+    response = asyncio.run(build_vector_search_agent().execute("Find related memories"))
+
+    assert response.success is True
+    assert response.result == {
+        "matches": [
+            {
+                "file_path": None,
+                "repository": "yenkasaChat",
+                "similarity_score": 0.91,
+                "snippet": "User memory about authentication decisions.",
+            }
+        ]
+    }
+
+
+def test_vector_search_routing_behavior() -> None:
+    orchestrator = YenkasaCodeOrchestrator(
+        mongodb=FakeVectorMongoDBService(),
+        embedding_service=FakeEmbeddingService(),
+    )
+    response = asyncio.run(orchestrator.route(AgentQueryRequest(query="Find login implementation")))
+
+    assert response.agent == "VectorSearchAgent"
     assert response.success is True

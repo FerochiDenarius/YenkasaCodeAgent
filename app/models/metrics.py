@@ -14,3 +14,6 @@ class AgentMetricsResponse(BaseModel):
     repository_queries_total: int
     repository_query_failures: int
     repository_query_duration_ms: int
+    vector_queries_total: int
+    vector_query_failures: int
+    vector_query_duration_ms: int

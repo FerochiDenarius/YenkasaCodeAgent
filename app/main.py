@@ -14,6 +14,7 @@ from app.core.orchestrator import YenkasaCodeOrchestrator
 from app.middleware import RequestIDMiddleware
 from app.routers.agent import router as agent_router
 from app.routers.health import router as health_router
+from app.services.embedding_service import EmbeddingService
 from app.services.mongodb_service import MongoDBService
 
 
@@ -26,7 +27,11 @@ async def lifespan(app: FastAPI):
     configure_logging(settings.log_level)
     app.state.settings = settings
     app.state.mongodb = MongoDBService(settings)
-    app.state.orchestrator = YenkasaCodeOrchestrator(mongodb=app.state.mongodb)
+    app.state.embedding_service = EmbeddingService(settings)
+    app.state.orchestrator = YenkasaCodeOrchestrator(
+        mongodb=app.state.mongodb,
+        embedding_service=app.state.embedding_service,
+    )
     LOGGER.info("YenkasaCode Agent started environment=%s", settings.environment)
     yield
     await app.state.mongodb.close()

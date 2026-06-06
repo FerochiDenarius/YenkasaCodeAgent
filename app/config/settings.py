@@ -13,6 +13,9 @@ class Settings(BaseSettings):
     app_port: int = 8080
     mongodb_uri: str = ""
     mongodb_database: str = "yenkasa_code"
+    vertex_project_id: str = ""
+    vertex_location: str = "us-central1"
+    vertex_embedding_model: str = "gemini-embedding-001"
     log_level: str = "INFO"
 
     @property

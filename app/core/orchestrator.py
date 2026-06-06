@@ -7,6 +7,7 @@ from app.agents import AgentRegistry
 from app.agents import DatabaseAgent
 from app.agents import RepositoryAgent
 from app.agents import SystemAgent
+from app.agents import VectorSearchAgent
 from app.core.logging import log_structured
 from app.models.agent import AgentDescriptor
 from app.models.agent import AgentQueryRequest
@@ -15,6 +16,8 @@ from app.models.metrics import AgentMetricsResponse
 from app.repositories import MemoryEmbeddingsRepository
 from app.repositories import RepoChunksRepository
 from app.repositories import RepositoryIntelligenceRepository
+from app.repositories import VectorSearchRepository
+from app.services.embedding_service import EmbeddingService
 from app.services.metrics import AgentMetrics
 from app.services.mongodb_service import MongoDBService
 
@@ -46,16 +49,27 @@ class YenkasaCodeOrchestrator:
         "chunk count",
         "language breakdown",
     )
+    vector_search_intent_keywords = (
+        "find",
+        "search",
+        "locate",
+        "where is",
+        "show code",
+        "show implementation",
+        "similar code",
+    )
 
     def __init__(
         self,
         registry: AgentRegistry | None = None,
         metrics: AgentMetrics | None = None,
         mongodb: MongoDBService | None = None,
+        embedding_service: EmbeddingService | None = None,
     ) -> None:
         self.registry = registry or AgentRegistry()
         self.metrics = metrics or AgentMetrics()
         self.mongodb = mongodb
+        self.embedding_service = embedding_service
         self._register_foundation_agents()
 
     def _register_foundation_agents(self) -> None:
@@ -73,6 +87,13 @@ class YenkasaCodeOrchestrator:
                 RepositoryAgent(
                     repo_chunks_repository=RepoChunksRepository(self.mongodb),
                     repository_intelligence_repository=RepositoryIntelligenceRepository(self.mongodb),
+                )
+            )
+        if self.mongodb is not None and self.embedding_service is not None and self.registry.get(VectorSearchAgent.name) is None:
+            self.registry.register(
+                VectorSearchAgent(
+                    embedding_service=self.embedding_service,
+                    vector_search_repository=VectorSearchRepository(self.mongodb),
                 )
             )
 
@@ -109,6 +130,8 @@ class YenkasaCodeOrchestrator:
             await self.metrics.record_database_query(success=response.success, duration_ms=duration_ms)
         if agent.name == RepositoryAgent.name:
             await self.metrics.record_repository_query(success=response.success, duration_ms=duration_ms)
+        if agent.name == VectorSearchAgent.name:
+            await self.metrics.record_vector_query(success=response.success, duration_ms=duration_ms)
         log_structured(
             LOGGER,
             logging.INFO if response.success else logging.ERROR,
@@ -122,6 +145,10 @@ class YenkasaCodeOrchestrator:
 
     def _select_agent(self, query: str) -> str:
         normalized = query.lower()
+        if self.registry.get(VectorSearchAgent.name) is not None and any(
+            keyword in normalized for keyword in self.vector_search_intent_keywords
+        ):
+            return VectorSearchAgent.name
         if self.registry.get(RepositoryAgent.name) is not None and any(
             keyword in normalized for keyword in self.repository_intent_keywords
         ):

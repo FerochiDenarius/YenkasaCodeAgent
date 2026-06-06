@@ -17,6 +17,9 @@ class AgentMetrics:
         self.repository_queries_total = 0
         self.repository_query_failures = 0
         self.repository_query_duration_ms = 0
+        self.vector_queries_total = 0
+        self.vector_query_failures = 0
+        self.vector_query_duration_ms = 0
 
     async def record(self, *, success: bool) -> None:
         async with self._lock:
@@ -40,6 +43,13 @@ class AgentMetrics:
             if not success:
                 self.repository_query_failures += 1
 
+    async def record_vector_query(self, *, success: bool, duration_ms: int) -> None:
+        async with self._lock:
+            self.vector_queries_total += 1
+            self.vector_query_duration_ms += duration_ms
+            if not success:
+                self.vector_query_failures += 1
+
     async def snapshot(self, *, registered_agents: list[str]) -> AgentMetricsResponse:
         async with self._lock:
             return AgentMetricsResponse(
@@ -53,4 +63,7 @@ class AgentMetrics:
                 repository_queries_total=self.repository_queries_total,
                 repository_query_failures=self.repository_query_failures,
                 repository_query_duration_ms=self.repository_query_duration_ms,
+                vector_queries_total=self.vector_queries_total,
+                vector_query_failures=self.vector_query_failures,
+                vector_query_duration_ms=self.vector_query_duration_ms,
             )
