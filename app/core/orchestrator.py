@@ -6,6 +6,7 @@ import time
 from app.agents import AgentRegistry
 from app.agents import CodeAuditAgent
 from app.agents import DatabaseAgent
+from app.agents import RefactorAgent
 from app.agents import RepositoryAgent
 from app.agents import SystemAgent
 from app.agents import VectorSearchAgent
@@ -22,6 +23,7 @@ from app.services.audit_service import AuditService
 from app.services.embedding_service import EmbeddingService
 from app.services.metrics import AgentMetrics
 from app.services.mongodb_service import MongoDBService
+from app.services.refactor_service import RefactorService
 
 
 LOGGER = logging.getLogger("yenkasa_code.orchestrator")
@@ -67,6 +69,14 @@ class YenkasaCodeOrchestrator:
         "architecture audit",
         "analyze repository",
         "find issues",
+    )
+    refactor_intent_keywords = (
+        "refactor",
+        "improve architecture",
+        "reduce technical debt",
+        "clean up code",
+        "extract service",
+        "optimize structure",
     )
 
     def __init__(
@@ -120,6 +130,20 @@ class YenkasaCodeOrchestrator:
                         )
                     )
                 )
+        if self.registry.get(RefactorAgent.name) is None:
+            code_audit_agent = self.registry.get(CodeAuditAgent.name)
+            repository_agent = self.registry.get(RepositoryAgent.name)
+            vector_search_agent = self.registry.get(VectorSearchAgent.name)
+            if code_audit_agent is not None and repository_agent is not None and vector_search_agent is not None:
+                self.registry.register(
+                    RefactorAgent(
+                        refactor_service=RefactorService(
+                            code_audit_agent=code_audit_agent,
+                            repository_agent=repository_agent,
+                            vector_search_agent=vector_search_agent,
+                        )
+                    )
+                )
 
     def discover_agents(self) -> list[AgentDescriptor]:
         return self.registry.list_agents()
@@ -158,6 +182,8 @@ class YenkasaCodeOrchestrator:
             await self.metrics.record_vector_query(success=response.success, duration_ms=duration_ms)
         if agent.name == CodeAuditAgent.name:
             await self.metrics.record_audit_query(success=response.success, duration_ms=duration_ms)
+        if agent.name == RefactorAgent.name:
+            await self.metrics.record_refactor_query(success=response.success, duration_ms=duration_ms)
         log_structured(
             LOGGER,
             logging.INFO if response.success else logging.ERROR,
@@ -171,6 +197,10 @@ class YenkasaCodeOrchestrator:
 
     def _select_agent(self, query: str) -> str:
         normalized = query.lower()
+        if self.registry.get(RefactorAgent.name) is not None and any(
+            keyword in normalized for keyword in self.refactor_intent_keywords
+        ):
+            return RefactorAgent.name
         if self.registry.get(CodeAuditAgent.name) is not None and any(
             keyword in normalized for keyword in self.audit_intent_keywords
         ):

@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 
 from app.agents.code_audit_agent import CodeAuditAgent
 from app.agents.database_agent import DatabaseAgent
+from app.agents.refactor_agent import RefactorAgent
 from app.agents.repository_agent import RepositoryAgent
 from app.agents.vector_search_agent import VectorSearchAgent
 from app.config.settings import Settings
@@ -18,6 +19,7 @@ from app.repositories.repository_intelligence_repository import RepositoryIntell
 from app.repositories.vector_search_repository import VectorSearchRepository
 from app.services.audit_service import AuditService
 from app.services.mongodb_service import MongoDBService
+from app.services.refactor_service import RefactorService
 
 
 def test_health_endpoint() -> None:
@@ -30,7 +32,7 @@ def test_health_endpoint() -> None:
     assert payload == {
         "status": "ok",
         "version": "0.1.0",
-        "registered_agents": 5,
+        "registered_agents": 6,
     }
 
 
@@ -65,6 +67,7 @@ def test_agent_discovery() -> None:
     assert payload[2]["name"] == "RepositoryAgent"
     assert payload[3]["name"] == "VectorSearchAgent"
     assert payload[4]["name"] == "CodeAuditAgent"
+    assert payload[5]["name"] == "RefactorAgent"
 
 
 def test_request_id_header_is_preserved() -> None:
@@ -98,6 +101,9 @@ def test_agent_metrics() -> None:
         "audit_queries_total",
         "audit_query_failures",
         "audit_query_duration_ms",
+        "refactor_queries_total",
+        "refactor_query_failures",
+        "refactor_query_duration_ms",
     }
     assert payload["registered_agents"] == [
         "system",
@@ -105,6 +111,7 @@ def test_agent_metrics() -> None:
         "RepositoryAgent",
         "VectorSearchAgent",
         "CodeAuditAgent",
+        "RefactorAgent",
     ]
 
 
@@ -601,4 +608,114 @@ def test_code_audit_routing_behavior() -> None:
     response = asyncio.run(orchestrator.route(AgentQueryRequest(query="Find issues in yenkasaChat")))
 
     assert response.agent == "CodeAuditAgent"
+    assert response.success is True
+
+
+def build_refactor_agent(
+    *,
+    audit_result: dict[str, object] | None = None,
+    repository_result: dict[str, object] | None = None,
+    vector_result: dict[str, object] | None = None,
+) -> RefactorAgent:
+    audit_agent = FakeAuditDependencyAgent(
+        audit_result
+        or {
+            "findings": [
+                {
+                    "severity": "HIGH",
+                    "category": "Architecture",
+                    "issue": "Oversized module mixes routing, data access, and business logic.",
+                    "recommendation": "Split responsibilities into route, service, and repository layers.",
+                }
+            ]
+        }
+    )
+    repository_agent = FakeAuditDependencyAgent(
+        repository_result
+        or {
+            "repositories": [
+                {
+                    "repository": "yenkasaChat",
+                    "chunk_count": 900,
+                    "file_count": 150,
+                }
+            ]
+        }
+    )
+    vector_agent = FakeAuditDependencyAgent(
+        vector_result
+        or {
+            "matches": [
+                {
+                    "file_path": "app/services/user.py",
+                    "repository": "yenkasaChat",
+                    "similarity_score": 0.9,
+                    "snippet": "duplicate service responsibility and repeated business logic",
+                }
+            ]
+        }
+    )
+    return RefactorAgent(
+        RefactorService(
+            code_audit_agent=audit_agent,
+            repository_agent=repository_agent,
+            vector_search_agent=vector_agent,
+        )
+    )
+
+
+def test_refactor_technical_debt_analysis() -> None:
+    response = asyncio.run(build_refactor_agent().execute("Show technical debt"))
+
+    assert response.agent == "RefactorAgent"
+    assert response.success is True
+    assert response.result["recommendations"][0]["priority"] == "HIGH"
+    assert response.result["recommendations"][0]["risk"] == "MEDIUM"
+
+
+def test_refactor_duplication_analysis() -> None:
+    response = asyncio.run(build_refactor_agent().execute("Find duplicated code blocks"))
+
+    assert response.success is True
+    assert response.result["recommendations"][0]["category"] == "Duplication"
+    assert response.result["recommendations"][0]["risk"] == "LOW"
+
+
+def test_refactor_service_extraction_recommendations() -> None:
+    response = asyncio.run(build_refactor_agent().execute("Extract service from oversized controllers"))
+
+    categories = {recommendation["category"] for recommendation in response.result["recommendations"]}
+    assert response.success is True
+    assert "Service Extraction" in categories
+
+
+def test_refactor_dependency_analysis() -> None:
+    response = asyncio.run(
+        build_refactor_agent(
+            vector_result={
+                "matches": [
+                    {
+                        "file_path": "app/services/a.py",
+                        "repository": "yenkasaChat",
+                        "similarity_score": 0.86,
+                        "snippet": "circular dependency import coupling hotspot",
+                    }
+                ]
+            }
+        ).execute("Analyze dependency hotspots")
+    )
+
+    assert response.success is True
+    assert response.result["recommendations"][0]["category"] == "Dependency"
+    assert response.result["recommendations"][0]["priority"] == "HIGH"
+
+
+def test_refactor_routing_behavior() -> None:
+    orchestrator = YenkasaCodeOrchestrator(
+        mongodb=FakeVectorMongoDBService(),
+        embedding_service=FakeEmbeddingService(),
+    )
+    response = asyncio.run(orchestrator.route(AgentQueryRequest(query="Reduce technical debt in yenkasaChat")))
+
+    assert response.agent == "RefactorAgent"
     assert response.success is True

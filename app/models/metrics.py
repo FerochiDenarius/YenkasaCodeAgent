@@ -20,3 +20,6 @@ class AgentMetricsResponse(BaseModel):
     audit_queries_total: int
     audit_query_failures: int
     audit_query_duration_ms: int
+    refactor_queries_total: int
+    refactor_query_failures: int
+    refactor_query_duration_ms: int
