@@ -18,6 +18,7 @@ The following Secret Manager resources were created:
 
 - `YENKASA_CODE_API_KEY`
 - `MONGODB_URI`
+- `BALESHOP_DATABASE_URL`
 - `VERTEX_PROJECT_ID`
 - `VERTEX_LOCATION`
 - `GOOGLE_APPLICATION_CREDENTIALS_JSON`
@@ -26,21 +27,30 @@ The following Secret Manager resources were created:
 
 Configured:
 
-- `YENKASA_CODE_API_KEY`: version `1`, enabled
+- `YENKASA_CODE_API_KEY`: version `2`, enabled
+- `MONGODB_URI`: version `1`, enabled
 - `VERTEX_PROJECT_ID`: version `1`, enabled
 - `VERTEX_LOCATION`: version `1`, enabled
 
-Missing payloads:
+Not used for this deployment:
 
-- `MONGODB_URI`: no enabled versions
 - `GOOGLE_APPLICATION_CREDENTIALS_JSON`: no enabled versions
+- `BALESHOP_DATABASE_URL`: secret placeholder created, no production SQL URL version attached yet. The Baleshop Spring Boot API currently uses MySQL locally on the DigitalOcean droplet; port `3306` is not reachable from Cloud Run.
 
-## Add Missing Secret Versions
+## Add or Rotate Secret Versions
 
-Add MongoDB Atlas URI:
+Rotate MongoDB Atlas URI:
 
 ```bash
 printf '%s' '<mongodb-atlas-uri>' | gcloud secrets versions add MONGODB_URI \
+  --data-file=- \
+  --project project-10405180-0afd-4ecc-9f8
+```
+
+Add Baleshop/yenkasa_store SQL URL after the MySQL host is reachable from Cloud Run:
+
+```bash
+printf '%s' 'mysql://<user>:<password>@<host>:3306/<database>' | gcloud secrets versions add BALESHOP_DATABASE_URL \
   --data-file=- \
   --project project-10405180-0afd-4ecc-9f8
 ```
@@ -61,7 +71,7 @@ Preferred production approach:
 
 ## Recommended Runtime Secret Mapping
 
-For internal alpha, the single generated API key can be mapped to all app roles:
+For internal alpha, the single generated API key is mapped to all app roles:
 
 ```text
 ADMIN_API_KEY=YENKASA_CODE_API_KEY:latest

@@ -22,7 +22,9 @@ from app.orchestrator import YenkasaIntelligenceOrchestrator
 from app.repositories import MemoryEmbeddingsRepository
 from app.repositories import RepoChunksRepository
 from app.repositories import RepositoryIntelligenceRepository
+from app.repositories import SQLDatabaseInventoryRepository
 from app.repositories import VectorSearchRepository
+from app.repositories import DatabaseInventoryRepository
 from app.services.audit_service import AuditService
 from app.services.cloudrun_service import CloudRunService
 from app.services.embedding_service import EmbeddingService
@@ -31,6 +33,7 @@ from app.services.mongodb_service import MongoDBService
 from app.services.observability_service import ObservabilityService
 from app.services.product_builder_service import ProductBuilderService
 from app.services.refactor_service import RefactorService
+from app.services.sql_database_service import SQLDatabaseService
 
 
 LOGGER = logging.getLogger("yenkasa_code.orchestrator")
@@ -45,9 +48,37 @@ class YenkasaCodeOrchestrator:
         "embeddings",
         "repo_chunks",
         "memory_embeddings",
+        "ai_embeddings",
+        "yme_memories",
+        "github_repositories",
         "storage",
         "collection",
+        "collections",
+        "list collections",
+        "count documents",
+        "document count",
+        "show indexes",
+        "list indexes",
+        "missing indexes",
+        "audit schema",
+        "database schema",
+        "schema inspection",
+        "slow query",
+        "slow queries",
+        "database performance",
+        "database health",
+        "runtime exception",
+        "runtime exceptions",
+        "explain plan",
         "indexed file",
+        "sql",
+        "mysql",
+        "postgres",
+        "postgresql",
+        "baleshop",
+        "bale_shop",
+        "yenkasa_store",
+        "store database",
     )
     repository_intent_keywords = (
         "repository",
@@ -123,6 +154,7 @@ class YenkasaCodeOrchestrator:
         embedding_service: EmbeddingService | None = None,
         cloudrun_service: CloudRunService | None = None,
         observability_service: ObservabilityService | None = None,
+        sql_database_service: SQLDatabaseService | None = None,
     ) -> None:
         self.registry = registry or AgentRegistry()
         self.metrics = metrics or AgentMetrics()
@@ -130,6 +162,7 @@ class YenkasaCodeOrchestrator:
         self.embedding_service = embedding_service
         self.cloudrun_service = cloudrun_service
         self.observability_service = observability_service
+        self.sql_database_service = sql_database_service
         self._register_foundation_agents()
         self.yio = YenkasaIntelligenceOrchestrator(registry=self.registry)
 
@@ -137,10 +170,20 @@ class YenkasaCodeOrchestrator:
         if self.registry.get(SystemAgent.name) is None:
             self.registry.register(SystemAgent())
         if self.mongodb is not None and self.registry.get(DatabaseAgent.name) is None:
+            mongodb_settings = getattr(self.mongodb, "settings", None)
             self.registry.register(
                 DatabaseAgent(
                     repo_chunks_repository=RepoChunksRepository(self.mongodb),
                     memory_embeddings_repository=MemoryEmbeddingsRepository(self.mongodb),
+                    database_inventory_repository=DatabaseInventoryRepository(self.mongodb, mongodb_settings)
+                    if mongodb_settings is not None
+                    else None,
+                    sql_database_inventory_repository=SQLDatabaseInventoryRepository(
+                        self.sql_database_service,
+                        mongodb_settings,
+                    )
+                    if self.sql_database_service is not None and mongodb_settings is not None
+                    else None,
                 )
             )
         if self.mongodb is not None and self.registry.get(RepositoryAgent.name) is None:

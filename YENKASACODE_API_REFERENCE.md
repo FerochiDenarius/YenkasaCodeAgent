@@ -4,12 +4,8 @@ Date: 2026-06-06
 
 ## Base URL
 
-Cloud Run URL is not assigned yet because deployment is blocked pending secret versions.
-
-After deployment:
-
 ```text
-https://<cloud-run-url>
+https://yenkasa-code-agent-3vx2nvls4a-ew.a.run.app
 ```
 
 ## Authentication

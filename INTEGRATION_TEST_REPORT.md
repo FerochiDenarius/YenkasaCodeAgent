@@ -4,14 +4,7 @@ Date: 2026-06-06
 
 ## Status
 
-Live integration tests were not run.
-
-Reason:
-
-- `MONGODB_URI` is not available locally.
-- `MONGODB_URI` Secret Manager resource has no enabled version.
-- `GOOGLE_APPLICATION_CREDENTIALS_JSON` Secret Manager resource has no enabled version.
-- Cloud Run service is not deployed yet.
+Live integration tests passed.
 
 ## Local Test Baseline
 
@@ -24,7 +17,7 @@ Command:
 Result:
 
 ```text
-52 passed, 3 skipped, 1 warning
+54 passed, 3 skipped, 1 warning
 ```
 
 The skipped tests are live external tests.
@@ -37,18 +30,24 @@ Run after secrets are configured:
 RUN_INTEGRATION_TESTS=1 .venv312/bin/python -m pytest -q tests/test_integration_external.py
 ```
 
+Result:
+
+```text
+3 passed
+```
+
 ## Live Systems To Validate
 
 - MongoDB Atlas.
 - MongoDB Atlas Vector Search.
 - Vertex AI Gemini embeddings.
-- Cloud Run APIs.
-- Cloud Logging.
+- Cloud Run APIs through deployed `/ready`.
+- Cloud Logging through deployed `/ready`.
 
 ## Expected Pass Criteria
 
-- MongoDB ping succeeds.
-- Vector search query returns a list response from Atlas.
-- Vertex AI returns a non-empty embedding vector.
-- Cloud Run status API is accessible.
-- Cloud Logging API is accessible.
+- MongoDB ping succeeded.
+- Vector search query returned a list response from Atlas.
+- Vertex AI returned a non-empty embedding vector.
+- Cloud Run status API is accessible through `/ready`.
+- Cloud Logging API is accessible through `/ready`.

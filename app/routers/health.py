@@ -32,11 +32,14 @@ async def health(request: Request, principal: ViewerPrincipal) -> HealthResponse
 @router.get("/ready", response_model=ReadinessResponse)
 async def ready(request: Request, principal: AdminPrincipal) -> JSONResponse:
     checks = {
-        "mongodb": await _run_check(request.app.state.mongodb.ping),
+        "mongodb": await _run_check(request.app.state.mongodb.readiness_check),
         "vertex_ai": await _run_check(request.app.state.embedding_service.readiness_check),
         "cloud_run": await _run_check(request.app.state.cloudrun_service.readiness_check),
         "cloud_logging": await _run_check(request.app.state.observability_service.readiness_check),
     }
+    sql_database_service = getattr(request.app.state, "sql_database_service", None)
+    if sql_database_service is not None and sql_database_service.configured:
+        checks["baleshop_sql"] = await _run_check(sql_database_service.readiness_check)
     status = "ready" if all(check["ok"] for check in checks.values()) else "not_ready"
     return JSONResponse(
         status_code=200 if status == "ready" else 503,

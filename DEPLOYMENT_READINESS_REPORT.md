@@ -25,7 +25,7 @@ Command:
 Result:
 
 ```text
-52 passed, 3 skipped, 1 warning
+54 passed, 3 skipped, 1 warning
 ```
 
 The 3 skipped tests are live integration tests gated behind `RUN_INTEGRATION_TESTS=1`.
@@ -54,10 +54,10 @@ Local Docker status: unavailable on this machine.
 
 Cloud Build was used for Docker validation.
 
-Build ID:
+Final build ID:
 
 ```text
-b8681055-dbb6-4b92-8850-1a0bf3847a09
+14109790-8087-458d-8ede-6c21285b0d63
 ```
 
 Result:
@@ -92,19 +92,30 @@ Protected endpoints:
 
 ### Readiness Endpoint
 
-Status: implemented locally, not yet validated on Cloud Run.
+Status: validated on Cloud Run.
 
-Cloud Run deployment is blocked until required secret versions are added for:
+Cloud Run readiness result:
 
-- `MONGODB_URI`
-- `GOOGLE_APPLICATION_CREDENTIALS_JSON`
+```text
+GET /ready -> 200
+```
+
+Readiness checks passed:
+
+- MongoDB
+- Vertex AI
+- Cloud Run
+- Cloud Logging
 
 ## Readiness Decision
 
 Code and image readiness: pass
 
-Cloud Run deployment readiness: blocked
+Cloud Run deployment readiness: pass
 
-Reason:
+Deployment:
 
-Secret Manager resources exist, but `MONGODB_URI` and `GOOGLE_APPLICATION_CREDENTIALS_JSON` have no enabled secret versions. Deploying without them would not satisfy the requirement that live readiness checks pass.
+- Service: `yenkasa-code-agent`
+- URL: `https://yenkasa-code-agent-3vx2nvls4a-ew.a.run.app`
+- Revision: `yenkasa-code-agent-00003-kk9`
+- Traffic: `100%`

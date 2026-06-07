@@ -20,6 +20,7 @@ from app.services.cloudrun_service import CloudRunService
 from app.services.embedding_service import EmbeddingService
 from app.services.mongodb_service import MongoDBService
 from app.services.observability_service import ObservabilityService
+from app.services.sql_database_service import SQLDatabaseService
 
 
 LOGGER = logging.getLogger("yenkasa_code.app")
@@ -34,15 +35,18 @@ async def lifespan(app: FastAPI):
     app.state.embedding_service = EmbeddingService(settings)
     app.state.cloudrun_service = CloudRunService(settings)
     app.state.observability_service = ObservabilityService(settings)
+    app.state.sql_database_service = SQLDatabaseService(settings)
     app.state.rate_limiter = RateLimiter(settings)
     app.state.orchestrator = YenkasaCodeOrchestrator(
         mongodb=app.state.mongodb,
         embedding_service=app.state.embedding_service,
         cloudrun_service=app.state.cloudrun_service,
         observability_service=app.state.observability_service,
+        sql_database_service=app.state.sql_database_service,
     )
     LOGGER.info("YenkasaCode Agent started environment=%s", settings.environment)
     yield
+    await app.state.sql_database_service.close()
     await app.state.mongodb.close()
     LOGGER.info("YenkasaCode Agent stopped")
 

@@ -12,7 +12,11 @@ class Settings(BaseSettings):
     app_env: str = "development"
     app_port: int = 8080
     mongodb_uri: str = ""
-    mongodb_database: str = "yenkasa_code"
+    mongodb_database: str = "yenkasa_ai_db"
+    mongodb_app_database: str = "yenkasaChat"
+    baleshop_database_url: str = ""
+    baleshop_database_name: str = "yenkasa_store"
+    baleshop_database_label: str = "yenkasa_store"
     vertex_project_id: str = ""
     vertex_location: str = "us-central1"
     vertex_embedding_model: str = "gemini-embedding-001"

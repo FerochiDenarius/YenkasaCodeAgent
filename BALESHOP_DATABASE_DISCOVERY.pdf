@@ -1,0 +1,270 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+2 0 obj
+<< /Length 1741 >>
+stream
+BT
+/F1 10 Tf
+14 TL
+50 760 Td
+(BALESHOP DATABASE DISCOVERY) Tj
+T* () Tj
+T* (SUMMARY) Tj
+T* () Tj
+T* (Baleshop / Yenkasa Store is not stored in MongoDB. It is a Spring Boot service backed by a ) Tj
+T* (local MySQL database on the DigitalOcean droplet.) Tj
+T* () Tj
+T* (The database is currently local-only and cannot be reached directly from Cloud Run.) Tj
+T* () Tj
+T* (SERVER) Tj
+T* () Tj
+T* (- Public IP: 134.209.182.39) Tj
+T* (- Private IP observed on server: 10.16.0.5) Tj
+T* (- App directory: /root/triciabales) Tj
+T* (- PM2 app name: tricia-bales-api) Tj
+T* (- Spring Boot artifact: target/baleshop-0.0.1-SNAPSHOT.jar) Tj
+T* (- YenkasaChat proxy file: ) Tj
+T* (/Users/kofibright/yenkasaChat/yenkasaChatBackend/RegLoginBackend/store/yenkasa-store-) Tj
+T* (server.js) Tj
+T* (- Proxy upstream env var: TRICIABALES_API_BASE) Tj
+T* (- Proxy fallback: http://134.209.182.39:8080) Tj
+T* () Tj
+T* (SPRING DATASOURCE) Tj
+T* () Tj
+T* (Confirmed datasource in /root/triciabales/src/main/resources/application.properties:) Tj
+T* () Tj
+T* (- JDBC URL: jdbc:mysql://localhost:3306/bale_shop) Tj
+T* (- Driver: com.mysql.cj.jdbc.Driver) Tj
+T* (- Database user: balesuser) Tj
+T* (- Database name: bale_shop) Tj
+T* () Tj
+T* (Sensitive values are intentionally not recorded in this document.) Tj
+T* () Tj
+T* (MYSQL SERVER) Tj
+T* () Tj
+T* (- Server version: MySQL 8.0.46-0ubuntu0.24.04.2) Tj
+T* (- bind_address: 127.0.0.1) Tj
+T* () Tj
+T* (Because MySQL is bound to 127.0.0.1, only processes on the Baleshop droplet can connect to ) Tj
+T* (it. Cloud Run cannot connect directly to this MySQL server.) Tj
+T* () Tj
+T* (DATABASES) Tj
+T* () Tj
+T* (Confirmed databases:) Tj
+T* () Tj
+T* (- bale_shop) Tj
+T* (- information_schema) Tj
+T* (- performance_schema) Tj
+ET
+endstream
+endobj
+3 0 obj
+<< /Type /Page /Parent 10 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 1 0 R >> >> /Contents 2 0 R >>
+endobj
+4 0 obj
+<< /Length 1638 >>
+stream
+BT
+/F1 10 Tf
+14 TL
+50 760 Td
+() Tj
+T* (TABLE INVENTORY) Tj
+T* () Tj
+T* (Database: bale_shop) Tj
+T* () Tj
+T* (| Table | Approx. Rows |) Tj
+T* (| --- | ---: |) Tj
+T* (| app_notifications | 134 |) Tj
+T* (| bale_images | 101 |) Tj
+T* (| bales | 44 |) Tj
+T* (| order_items | 12 |) Tj
+T* (| order_refunds | 2 |) Tj
+T* (| orders | 12 |) Tj
+T* (| user_tokens | 35 |) Tj
+T* (| users | 20 |) Tj
+T* () Tj
+T* (APPLICATION STORAGE MODEL) Tj
+T* () Tj
+T* (Based on Spring entities and live tables:) Tj
+T* () Tj
+T* (- Users: users) Tj
+T* (- User sessions/tokens: user_tokens) Tj
+T* (- Store products/bales: bales) Tj
+T* (- Product images: bale_images) Tj
+T* (- Orders: orders) Tj
+T* (- Order line items: order_items) Tj
+T* (- Refunds: order_refunds) Tj
+T* (- Notifications: app_notifications) Tj
+T* () Tj
+T* (DATABASEAGENT INTEGRATION STATUS) Tj
+T* () Tj
+T* (YenkasaCode Agent now has optional read-only SQL support for Baleshop:) Tj
+T* () Tj
+T* (- Env var: BALESHOP_DATABASE_URL) Tj
+T* (- Display label: yenkasa_store) Tj
+T* (- Expected URL format: mysql://<user>:<password>@<host>:3306/<database>) Tj
+T* () Tj
+T* (Current production state:) Tj
+T* () Tj
+T* (- Secret Manager placeholder BALESHOP_DATABASE_URL exists.) Tj
+T* (- No usable production secret version has been attached.) Tj
+T* (- Cloud Run cannot use mysql://...@localhost:3306/bale_shop because localhost would mean the) Tj
+T* ( Cloud Run container, not the DigitalOcean droplet.) Tj
+T* (- Cloud Run cannot use 134.209.182.39:3306 while MySQL is bound to 127.0.0.1.) Tj
+T* () Tj
+T* (RECOMMENDED PRODUCTION OPTIONS) Tj
+T* () Tj
+T* (Option 1: Move Baleshop MySQL to a managed database.) Tj
+ET
+endstream
+endobj
+5 0 obj
+<< /Type /Page /Parent 10 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 1 0 R >> >> /Contents 4 0 R >>
+endobj
+6 0 obj
+<< /Length 1743 >>
+stream
+BT
+/F1 10 Tf
+14 TL
+50 760 Td
+() Tj
+T* (- Recommended for production.) Tj
+T* (- Create a read-only DatabaseAgent user.) Tj
+T* (- Add BALESHOP_DATABASE_URL in Secret Manager.) Tj
+T* (- Attach the secret to Cloud Run.) Tj
+T* () Tj
+T* (Option 2: Expose MySQL securely from the droplet.) Tj
+T* () Tj
+T* (- Bind MySQL to a reachable private or public interface.) Tj
+T* (- Restrict firewall access.) Tj
+T* (- Create a read-only MySQL user for YenkasaCode Agent.) Tj
+T* (- Prefer static egress from Cloud Run before allowlisting.) Tj
+T* () Tj
+T* (Option 3: Add a read-only internal inventory endpoint to Baleshop API.) Tj
+T* () Tj
+T* (- Avoids exposing MySQL directly.) Tj
+T* (- DatabaseAgent would call the Baleshop API instead of MySQL.) Tj
+T* (- Requires Baleshop code changes and authentication.) Tj
+T* () Tj
+T* (Option 4: Use an SSH tunnel.) Tj
+T* () Tj
+T* (- Useful for local debugging.) Tj
+T* (- Not recommended for Cloud Run production runtime.) Tj
+T* () Tj
+T* (CLOUD SQL PREPARATION BEFORE PAUSE) Tj
+T* () Tj
+T* (The migration was paused before any live application switch.) Tj
+T* () Tj
+T* (Completed before pause:) Tj
+T* () Tj
+T* (- Created a new separate Cloud SQL instance:) Tj
+T* (  - Instance name: yenkasa-store-mysql) Tj
+T* (  - Database engine: MySQL 8) Tj
+T* (  - Region: europe-west1) Tj
+T* (  - Status: RUNNABLE) Tj
+T* (  - Public IP: 34.78.8.96) Tj
+T* (- Stored generated root password in Secret Manager:) Tj
+T* (  - BALESHOP_CLOUDSQL_ROOT_PASSWORD) Tj
+T* () Tj
+T* (Not done before pause:) Tj
+T* () Tj
+T* (- Did not migrate data.) Tj
+T* (- Did not create app/read-only users.) Tj
+T* (- Did not change Baleshop Spring Boot config.) Tj
+T* (- Did not affect live store signups.) Tj
+T* () Tj
+T* (Recommended next move:) Tj
+T* () Tj
+ET
+endstream
+endobj
+7 0 obj
+<< /Type /Page /Parent 10 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 1 0 R >> >> /Contents 6 0 R >>
+endobj
+8 0 obj
+<< /Length 1691 >>
+stream
+BT
+/F1 10 Tf
+14 TL
+50 760 Td
+(- Keep the live Baleshop droplet using localhost:3306/bale_shop until a planned migration ) Tj
+T* (window.) Tj
+T* (- Use YenkasaCode Agent later to plan the Cloud SQL migration, create read-only/app users, ) Tj
+T* (import the dump, validate row counts, and switch the Spring Boot datasource only after ) Tj
+T* (successful validation.) Tj
+T* () Tj
+T* (SAFE FUTURE TRACE COMMANDS) Tj
+T* () Tj
+T* (Run on the Baleshop droplet:) Tj
+T* () Tj
+T* (bash) Tj
+T* (cd /root/triciabales) Tj
+T* (grep -RInE 'spring.datasource|jakarta.persistence.jdbc|jdbc:mysql|MYSQL|DB_|DATABASE' . ) Tj
+T* (--exclude-dir=target 2>/dev/null) Tj
+T* (ss -lntp | grep 3306 || true) Tj
+T* (mysql -u balesuser -p bale_shop) Tj
+T* () Tj
+T* () Tj
+T* (Inside MySQL:) Tj
+T* () Tj
+T* (sql) Tj
+T* (SHOW DATABASES;) Tj
+T* (USE bale_shop;) Tj
+T* (SHOW TABLES;) Tj
+T* (SELECT table_name, table_rows) Tj
+T* (FROM information_schema.tables) Tj
+T* (WHERE table_schema = 'bale_shop') Tj
+T* (ORDER BY table_name;) Tj
+T* (SHOW VARIABLES LIKE 'bind_address';) Tj
+T* (EXIT;) Tj
+T* () Tj
+T* () Tj
+T* (Schema-only dump from the shell, not from inside the MySQL prompt:) Tj
+T* () Tj
+T* (bash) Tj
+T* (mysqldump -u balesuser -p --no-data bale_shop > /tmp/baleshop_schema.sql) Tj
+T* (head -n 120 /tmp/baleshop_schema.sql) Tj
+T* () Tj
+T* () Tj
+T* (SECURITY NOTES) Tj
+T* () Tj
+T* (- The local Spring datasource password appeared in command output during manual discovery. ) Tj
+T* (Rotate the Baleshop MySQL password before treating this environment as production-safe.) Tj
+T* (- Prefer creating a dedicated read-only database user for YenkasaCode Agent.) Tj
+T* (- Do not store live SQL credentials in repo files.) Tj
+ET
+endstream
+endobj
+9 0 obj
+<< /Type /Page /Parent 10 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 1 0 R >> >> /Contents 8 0 R >>
+endobj
+10 0 obj
+<< /Type /Pages /Kids [3 0 R 5 0 R 7 0 R 9 0 R] /Count 4 >>
+endobj
+11 0 obj
+<< /Type /Catalog /Pages 10 0 R >>
+endobj
+xref
+0 12
+0000000000 65535 f 
+0000000009 00000 n 
+0000000079 00000 n 
+0000001872 00000 n 
+0000001999 00000 n 
+0000003689 00000 n 
+0000003816 00000 n 
+0000005611 00000 n 
+0000005738 00000 n 
+0000007481 00000 n 
+0000007608 00000 n 
+0000007684 00000 n 
+trailer
+<< /Size 12 /Root 11 0 R >>
+startxref
+7735
+%%EOF

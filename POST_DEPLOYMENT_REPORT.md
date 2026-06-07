@@ -4,13 +4,25 @@ Date: 2026-06-06
 
 ## Status
 
-Cloud Run service was not deployed.
+Cloud Run service is deployed and operational.
 
-Reason:
+Service URL:
 
-- `MONGODB_URI` secret exists but has no enabled version.
-- `GOOGLE_APPLICATION_CREDENTIALS_JSON` secret exists but has no enabled version.
-- Deploying without these values would not meet the requirement that `/ready` passes.
+```text
+https://yenkasa-code-agent-3vx2nvls4a-ew.a.run.app
+```
+
+Latest ready revision:
+
+```text
+yenkasa-code-agent-00003-kk9
+```
+
+Traffic:
+
+```text
+100%
+```
 
 ## Completed Deployment Work
 
@@ -23,29 +35,35 @@ Reason:
 - Artifact bucket created.
 - Bucket versioning enabled.
 - Uniform bucket-level access enabled.
+- Cloud Run deployed privately.
+- Workload identity used instead of service account JSON.
+- Authenticated health and readiness checks passed.
 
-## Not Yet Validated
+## Endpoint Validation
 
-The following production endpoints were not validated against Cloud Run because the service is not deployed:
+Validated against Cloud Run:
 
-- `GET /health`
-- `GET /ready`
-- `POST /api/agent/query`
-- `GET /api/agent/agents`
-- `GET /api/agent/metrics`
+- `GET /health`: `200`
+- `GET /ready`: `200`
+- `GET /api/agent/agents`: `200`
+- `GET /api/agent/metrics`: `200`
+- `POST /api/agent/query`: `200`
 
-The following agents were not validated live on Cloud Run:
+## Agent Validation
 
-- `DatabaseAgent`
-- `RepositoryAgent`
-- `VectorSearchAgent`
-- `CodeAuditAgent`
-- `RefactorAgent`
-- `CloudRunAgent`
-- `ObservabilityAgent`
-- `ProductBuilderAgent`
-- YIO
+Validated live on Cloud Run:
 
-## Next Required Action
+- `DatabaseAgent`: success
+- `RepositoryAgent`: success
+- `VectorSearchAgent`: success
+- `CodeAuditAgent`: success
+- `RefactorAgent`: success
+- `CloudRunAgent`: success
+- `ObservabilityAgent`: success
+- `ProductBuilderAgent`: success
+- YIO: success
 
-Add missing secret versions, grant Cloud Run runtime IAM permissions, deploy with the command in `DEPLOYMENT_GUIDE.md`, then rerun post-deployment validation.
+## Observations
+
+- `repo_chunks` currently returned count `0`, so repository intelligence is operational but the target Atlas database appears empty for that collection.
+- The service is private and requires both Cloud Run IAM invocation and app-level `X-API-Key`.

@@ -257,7 +257,7 @@ class FakeLatestCursor:
         return self
 
     async def to_list(self, length: int | None) -> list[dict[str, str]]:
-        assert length == 1
+        assert length in {1, None}
         return [{"repo_name": "yenkasaChat", "file_path": "app/main.py", "indexed_at": "2026-06-06T12:00:00Z"}]
 
 
@@ -265,6 +265,10 @@ class FakeLatestCollection:
     def find(self, filter_query: dict[str, object], projection: dict[str, int]) -> FakeLatestCursor:
         assert filter_query == {}
         assert projection["_id"] == 0
+        return FakeLatestCursor()
+
+    def aggregate(self, pipeline: list[dict[str, object]]) -> FakeLatestCursor:
+        assert pipeline[-1]["$project"]["_id"] == 0
         return FakeLatestCursor()
 
 
@@ -289,7 +293,7 @@ class FakeMongoDBService:
         return self.command_database
 
     def collection(self, name: str) -> object:
-        assert name in {"repo_chunks", "memory_embeddings"}
+        assert name in {"ai_embeddings", "yme_memories"}
         return self.fake_collection
 
     async def count_documents(self, collection_name: str, filter_query: dict[str, object] | None = None) -> int:
@@ -368,12 +372,268 @@ def test_database_agent_routes_supported_question_to_repository() -> None:
 
     assert response.agent == "DatabaseAgent"
     assert response.success is True
-    assert response.result == {"top_repositories": [{"repository": "yenkasaChat", "chunk_count": 9}]}
+    assert response.result["top_repositories"] == [{"repository": "yenkasaChat", "chunk_count": 9}]
+    assert response.result["evidence"]["database_agent_executed"] is True
+
+
+class FakeSQLDatabaseInventoryRepository:
+    async def inventory(self) -> dict[str, object]:
+        return {
+            "database": "yenkasa_store",
+            "engine": "mysql",
+            "configured": False,
+        }
+
+
+class FakeDatabaseInventoryRepository:
+    def __init__(self) -> None:
+        self.settings = Settings()
+
+    def configured_databases(self) -> list[str]:
+        return ["yenkasa_ai_db", "yenkasaChat"]
+
+    async def list_collections(self, database_name: str | None = None) -> dict[str, object]:
+        return {
+            "collections": ["users", "posts", "comments"],
+            "database": database_name,
+            "evidence": {
+                "agent": "DatabaseAgent",
+                "database_agent_executed": True,
+                "databases_scanned": 1 if database_name else 2,
+                "collections_scanned": 3,
+                "documents_analyzed": 0,
+                "indexes_inspected": 0,
+            },
+        }
+
+    async def collection_counts(self, database_name: str | None = None) -> dict[str, object]:
+        return {
+            "counts": {"yenkasaChat": {"users": 4120, "posts": 83912, "comments": 210001}},
+            "evidence": {
+                "agent": "DatabaseAgent",
+                "database_agent_executed": True,
+                "databases_scanned": 1,
+                "collections_scanned": 3,
+                "documents_analyzed": 298033,
+                "indexes_inspected": 0,
+            },
+        }
+
+    async def collection_indexes(
+        self,
+        *,
+        collection_name: str | None = None,
+        database_name: str | None = None,
+    ) -> dict[str, object]:
+        return {
+            "indexes": {
+                database_name or "yenkasaChat": {
+                    collection_name or "posts": [
+                        {"name": "_id_", "key": {"_id": 1}},
+                        {"name": "authorId_1", "key": {"authorId": 1}},
+                    ]
+                }
+            },
+            "evidence": {
+                "agent": "DatabaseAgent",
+                "database_agent_executed": True,
+                "databases_scanned": 1,
+                "collections_scanned": 1,
+                "documents_analyzed": 0,
+                "indexes_inspected": 2,
+            },
+        }
+
+    async def collections_missing_indexes(self, database_name: str | None = None) -> dict[str, object]:
+        return {
+            "collections_missing_indexes": [
+                {
+                    "database": database_name or "yenkasaChat",
+                    "collection": "notifications",
+                    "document_count": 1200,
+                    "index_count": 1,
+                }
+            ],
+            "evidence": {
+                "agent": "DatabaseAgent",
+                "database_agent_executed": True,
+                "databases_scanned": 1,
+                "collections_scanned": 4,
+                "documents_analyzed": 1200,
+                "indexes_inspected": 5,
+            },
+        }
+
+    async def schema_inspection(
+        self,
+        *,
+        collection_name: str | None = None,
+        database_name: str | None = None,
+        sample_size: int = 25,
+    ) -> dict[str, object]:
+        return {
+            "schemas": {
+                database_name or "yenkasaChat": {
+                    collection_name or "users": {
+                        "sample_size": sample_size,
+                        "fields": {"email": {"types": ["str"], "nullable": False}},
+                    }
+                }
+            },
+            "evidence": {
+                "agent": "DatabaseAgent",
+                "database_agent_executed": True,
+                "databases_scanned": 1,
+                "collections_scanned": 1,
+                "documents_analyzed": sample_size,
+                "indexes_inspected": 0,
+            },
+        }
+
+    async def explain(
+        self,
+        *,
+        collection_name: str,
+        filter_query: dict[str, object] | None = None,
+        database_name: str | None = None,
+    ) -> dict[str, object]:
+        return {
+            "database": database_name or "yenkasaChat",
+            "collection": collection_name,
+            "filter": filter_query or {},
+            "explain": {"queryPlanner": {"winningPlan": {"stage": "IXSCAN"}}},
+            "evidence": {
+                "agent": "DatabaseAgent",
+                "database_agent_executed": True,
+                "databases_scanned": 1,
+                "collections_scanned": 1,
+                "documents_analyzed": 0,
+                "indexes_inspected": 0,
+            },
+        }
+
+    async def query_pattern_risks(self, *, query: str) -> dict[str, object]:
+        return {
+            "query_pattern_risks": [
+                {
+                    "file_path": "src/notifications/service.js",
+                    "function_name": "loadNotifications",
+                    "collection": "notifications",
+                    "likely_failure_point": "Potential runtime exception where code assumes database fields exist.",
+                    "confidence_score": 0.62,
+                }
+            ],
+            "evidence": {
+                "agent": "DatabaseAgent",
+                "database_agent_executed": True,
+                "databases_scanned": 2,
+                "collections_scanned": 3,
+                "documents_analyzed": 1,
+                "indexes_inspected": 0,
+            },
+        }
+
+
+def test_database_agent_routes_baleshop_sql_inventory() -> None:
+    mongodb = FakeMongoDBService(collection=FakeAggregateCollection())
+    agent = DatabaseAgent(
+        repo_chunks_repository=RepoChunksRepository(mongodb),
+        memory_embeddings_repository=MemoryEmbeddingsRepository(mongodb),
+        sql_database_inventory_repository=FakeSQLDatabaseInventoryRepository(),
+    )
+
+    response = asyncio.run(agent.execute("Show yenkasa_store SQL database inventory", {}))
+
+    assert response.agent == "DatabaseAgent"
+    assert response.success is True
+    assert response.result == {
+        "sql_database_inventory": {
+            "database": "yenkasa_store",
+            "engine": "mysql",
+            "configured": False,
+        }
+    }
+
+
+def test_database_agent_lists_live_collections() -> None:
+    mongodb = FakeMongoDBService()
+    agent = DatabaseAgent(
+        repo_chunks_repository=RepoChunksRepository(mongodb),
+        memory_embeddings_repository=MemoryEmbeddingsRepository(mongodb),
+        database_inventory_repository=FakeDatabaseInventoryRepository(),
+    )
+
+    response = asyncio.run(agent.execute("List every MongoDB collection", {}))
+
+    assert response.success is True
+    assert response.result["collections"] == ["users", "posts", "comments"]
+    assert response.result["evidence"]["database_agent_executed"] is True
+
+
+def test_database_agent_counts_documents_for_collections() -> None:
+    mongodb = FakeMongoDBService()
+    agent = DatabaseAgent(
+        repo_chunks_repository=RepoChunksRepository(mongodb),
+        memory_embeddings_repository=MemoryEmbeddingsRepository(mongodb),
+        database_inventory_repository=FakeDatabaseInventoryRepository(),
+    )
+
+    response = asyncio.run(agent.execute("How many documents exist in each collection?", {}))
+
+    assert response.success is True
+    assert response.result["counts"]["yenkasaChat"]["posts"] == 83912
+    assert response.result["evidence"]["documents_analyzed"] == 298033
+
+
+def test_database_agent_shows_indexes_for_collection() -> None:
+    mongodb = FakeMongoDBService()
+    agent = DatabaseAgent(
+        repo_chunks_repository=RepoChunksRepository(mongodb),
+        memory_embeddings_repository=MemoryEmbeddingsRepository(mongodb),
+        database_inventory_repository=FakeDatabaseInventoryRepository(),
+    )
+
+    response = asyncio.run(agent.execute("Show indexes for posts collection", {}))
+
+    assert response.success is True
+    assert "posts" in response.result["indexes"]["yenkasaChat"]
+    assert response.result["evidence"]["indexes_inspected"] == 2
+
+
+def test_database_agent_audits_schema_and_missing_indexes() -> None:
+    mongodb = FakeMongoDBService()
+    agent = DatabaseAgent(
+        repo_chunks_repository=RepoChunksRepository(mongodb),
+        memory_embeddings_repository=MemoryEmbeddingsRepository(mongodb),
+        database_inventory_repository=FakeDatabaseInventoryRepository(),
+    )
+
+    response = asyncio.run(agent.execute("Audit schema for users collection", {"sample_size": 5}))
+
+    assert response.success is True
+    assert "schema_inspection" in response.result
+    assert response.result["evidence"]["collections_scanned"] == 5
+
+
+def test_database_agent_runtime_exception_hotspots_use_database_evidence() -> None:
+    mongodb = FakeMongoDBService()
+    agent = DatabaseAgent(
+        repo_chunks_repository=RepoChunksRepository(mongodb),
+        memory_embeddings_repository=MemoryEmbeddingsRepository(mongodb),
+        database_inventory_repository=FakeDatabaseInventoryRepository(),
+    )
+
+    response = asyncio.run(agent.execute("Find runtime exception hotspots based on database usage", {}))
+
+    assert response.success is True
+    risks = response.result["database_health"]["query_pattern_risks"]
+    assert risks[0]["file_path"] == "src/notifications/service.js"
+    assert risks[0]["collection"] == "notifications"
 
 
 class FakeRepositoryMongoDBService:
     async def aggregate(self, collection_name: str, pipeline: list[dict[str, object]]) -> list[dict[str, object]]:
-        assert collection_name == "repo_chunks"
+        assert collection_name == "ai_embeddings"
         pipeline_text = str(pipeline)
         if "latest_indexed_at" in pipeline_text:
             return [
@@ -488,7 +748,7 @@ class FakeVectorMongoDBService:
     async def aggregate(self, collection_name: str, pipeline: list[dict[str, object]]) -> list[dict[str, object]]:
         if "$vectorSearch" in pipeline[0]:
             assert pipeline[0]["$vectorSearch"]["queryVector"] == [0.1, 0.2, 0.3]
-            if collection_name == "memory_embeddings":
+            if collection_name == "yme_memories":
                 return [
                     {
                         "file_path": None,
@@ -497,7 +757,7 @@ class FakeVectorMongoDBService:
                         "snippet": "User memory about authentication decisions.",
                     }
                 ]
-            assert collection_name == "repo_chunks"
+            assert collection_name == "ai_embeddings"
             return [
                 {
                     "file_path": "backend/auth/jwt.py",
@@ -506,7 +766,7 @@ class FakeVectorMongoDBService:
                     "snippet": "def verify_jwt(token): ...",
                 }
             ]
-        assert collection_name == "repo_chunks"
+        assert collection_name == "ai_embeddings"
         pipeline_text = str(pipeline)
         if "latest_indexed_at" in pipeline_text:
             return [{"repository": "yenkasaChat", "chunk_count": 20, "file_count": 4}]
@@ -1030,6 +1290,39 @@ def test_yio_multi_agent_planning() -> None:
         "CloudRunAgent",
         "ObservabilityAgent",
     ]
+
+
+def test_yio_routes_store_database_queries_to_database_agent() -> None:
+    classifier = IntentClassifier()
+    planner = ExecutionPlanner()
+
+    intents = classifier.classify("Show yenkasa_store SQL database inventory.")
+    plan = planner.plan(query="Show yenkasa_store SQL database inventory.", intents=intents)
+
+    assert intents == ["database"]
+    assert [step.agent for step in plan.steps] == ["DatabaseAgent"]
+
+
+def test_yio_routes_database_metadata_queries_to_database_agent() -> None:
+    classifier = IntentClassifier()
+    planner = ExecutionPlanner()
+
+    for query in (
+        "List collections",
+        "Count documents in collections",
+        "Show indexes for posts collection",
+        "Audit schema",
+        "Find slow queries",
+        "Database performance",
+        "Runtime exceptions",
+        "Database health",
+        "Collection statistics",
+    ):
+        intents = classifier.classify(query)
+        plan = planner.plan(query=query, intents=intents)
+
+        assert "database" in intents
+        assert "DatabaseAgent" in [step.agent for step in plan.steps]
 
 
 def test_yio_response_synthesis() -> None:

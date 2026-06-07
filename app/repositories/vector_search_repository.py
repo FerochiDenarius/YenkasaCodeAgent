@@ -6,10 +6,10 @@ from app.services.mongodb_service import MongoDBService
 
 
 class VectorSearchRepository:
-    repo_chunks_collection = "repo_chunks"
-    memory_embeddings_collection = "memory_embeddings"
+    repo_chunks_collection = "ai_embeddings"
+    memory_embeddings_collection = "yme_memories"
     repo_chunks_index = "repo_chunks_vector_index"
-    memory_embeddings_index = "memory_embeddings_vector_index"
+    memory_embeddings_index = "yme_memories_vector_index"
 
     def __init__(self, mongodb: MongoDBService) -> None:
         self.mongodb = mongodb

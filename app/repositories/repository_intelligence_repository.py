@@ -6,7 +6,7 @@ from app.services.mongodb_service import MongoDBService
 
 
 class RepositoryIntelligenceRepository:
-    collection_name = "repo_chunks"
+    collection_name = "ai_embeddings"
 
     def __init__(self, mongodb: MongoDBService) -> None:
         self.mongodb = mongodb
@@ -19,7 +19,14 @@ class RepositoryIntelligenceRepository:
                     "$group": {
                         "_id": {"$ifNull": ["$repo_name", "$repository"]},
                         "chunk_count": {"$sum": 1},
-                        "latest_indexed_at": {"$max": "$indexed_at"},
+                        "latest_indexed_at": {
+                            "$max": {
+                                "$ifNull": [
+                                    "$indexed_at",
+                                    {"$ifNull": ["$created_at", {"$ifNull": ["$updated_at", "$last_modified"]}]},
+                                ]
+                            }
+                        },
                         "files": {"$addToSet": {"$ifNull": ["$file_path", "$path"]}},
                     }
                 },
@@ -138,7 +145,17 @@ class RepositoryIntelligenceRepository:
         records = await self.mongodb.aggregate(
             self.collection_name,
             [
-                {"$sort": {"indexed_at": -1}},
+                {
+                    "$addFields": {
+                        "indexed_timestamp": {
+                            "$ifNull": [
+                                "$indexed_at",
+                                {"$ifNull": ["$created_at", {"$ifNull": ["$updated_at", "$last_modified"]}]},
+                            ]
+                        }
+                    }
+                },
+                {"$sort": {"indexed_timestamp": -1}},
                 {"$limit": 1},
                 {
                     "$project": {
@@ -146,7 +163,10 @@ class RepositoryIntelligenceRepository:
                         "repository": {"$ifNull": ["$repo_name", "$repository"]},
                         "file_path": {"$ifNull": ["$file_path", "$path"]},
                         "indexed_at": 1,
+                        "created_at": 1,
                         "updated_at": 1,
+                        "last_modified": 1,
+                        "indexed_timestamp": 1,
                     }
                 },
             ],
@@ -162,7 +182,14 @@ class RepositoryIntelligenceRepository:
                         "$or": [
                             {"repo_name": {"$exists": False}},
                             {"file_path": {"$exists": False}},
-                            {"indexed_at": {"$exists": False}},
+                            {
+                                "$and": [
+                                    {"indexed_at": {"$exists": False}},
+                                    {"created_at": {"$exists": False}},
+                                    {"updated_at": {"$exists": False}},
+                                    {"last_modified": {"$exists": False}},
+                                ]
+                            },
                         ]
                     }
                 },

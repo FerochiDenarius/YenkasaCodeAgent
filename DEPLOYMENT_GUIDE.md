@@ -18,14 +18,21 @@ Date: 2026-06-06
 
 Image build: complete
 
-Cloud Run deployment: blocked
+Cloud Run deployment: complete
 
-Blocker:
+Service URL:
 
-- `MONGODB_URI` secret has no enabled version.
-- `GOOGLE_APPLICATION_CREDENTIALS_JSON` secret has no enabled version.
+```text
+https://yenkasa-code-agent-3vx2nvls4a-ew.a.run.app
+```
 
-`GOOGLE_APPLICATION_CREDENTIALS_JSON` may be replaced by Cloud Run workload identity if the runtime service account has the required IAM permissions.
+Latest ready revision:
+
+```text
+yenkasa-code-agent-00003-kk9
+```
+
+`GOOGLE_APPLICATION_CREDENTIALS_JSON` was not used. The deployment uses Cloud Run workload identity through the runtime service account.
 
 ## Build Command
 
@@ -35,15 +42,15 @@ gcloud builds submit \
   --project project-10405180-0afd-4ecc-9f8
 ```
 
-Build result:
+Final build result:
 
 ```text
-b8681055-dbb6-4b92-8850-1a0bf3847a09 SUCCESS
+14109790-8087-458d-8ede-6c21285b0d63 SUCCESS
 ```
 
 ## Deploy Command
 
-Run after required secret versions are added:
+Command used:
 
 ```bash
 gcloud run deploy yenkasa-code-agent \
@@ -57,7 +64,7 @@ gcloud run deploy yenkasa-code-agent \
   --cpu 2 \
   --timeout 300 \
   --no-allow-unauthenticated \
-  --set-env-vars APP_ENV=production,APP_PORT=8080,MONGODB_DATABASE=yenkasa_code,VERTEX_EMBEDDING_MODEL=gemini-embedding-001,GOOGLE_CLOUD_PROJECT=project-10405180-0afd-4ecc-9f8,CLOUD_RUN_SERVICE=yenkasa-code-agent,CLOUD_RUN_LOCATION=europe-west1 \
+  --set-env-vars APP_ENV=production,APP_PORT=8080,MONGODB_DATABASE=yenkasa_ai_db,MONGODB_APP_DATABASE=yenkasaChat,BALESHOP_DATABASE_NAME=yenkasa_store,BALESHOP_DATABASE_LABEL=yenkasa_store,VERTEX_EMBEDDING_MODEL=gemini-embedding-001,GOOGLE_CLOUD_PROJECT=project-10405180-0afd-4ecc-9f8,CLOUD_RUN_SERVICE=yenkasa-code-agent,CLOUD_RUN_LOCATION=europe-west1 \
   --set-secrets ADMIN_API_KEY=YENKASA_CODE_API_KEY:latest,DEVELOPER_API_KEY=YENKASA_CODE_API_KEY:latest,VIEWER_API_KEY=YENKASA_CODE_API_KEY:latest,HEALTHCHECK_API_KEY=YENKASA_CODE_API_KEY:latest,MONGODB_URI=MONGODB_URI:latest,VERTEX_PROJECT_ID=VERTEX_PROJECT_ID:latest,VERTEX_LOCATION=VERTEX_LOCATION:latest
 ```
 

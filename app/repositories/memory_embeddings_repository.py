@@ -6,7 +6,7 @@ from app.services.mongodb_service import MongoDBService
 
 
 class MemoryEmbeddingsRepository:
-    collection_name = "memory_embeddings"
+    collection_name = "yme_memories"
 
     def __init__(self, mongodb: MongoDBService) -> None:
         self.mongodb = mongodb
