@@ -2,6 +2,40 @@ from __future__ import annotations
 
 
 class IntentClassifier:
+    yenkasa_context_keywords = (
+        "yenkasa",
+        "yenkasa app",
+        "yenkasa ai",
+        "yenkasaai",
+        "yenkasa chat",
+        "yenkasachat",
+        "yenkasa community",
+        "yenkasacommunity",
+    )
+    yenkasa_database_context_keywords = (
+        "yenkasa_store",
+        "yenkasa store",
+        "store database",
+    )
+    yenkasa_diagnostic_keywords = (
+        "bug",
+        "bugs",
+        "fix",
+        "broken",
+        "crash",
+        "crashes",
+        "issue",
+        "issues",
+        "problem",
+        "problems",
+        "why",
+        "where",
+        "find",
+        "missing",
+        "failing",
+        "failure",
+        "error",
+    )
     keyword_map = {
         "database": (
             "database",
@@ -49,6 +83,7 @@ class IntentClassifier:
             "chunk count",
         ),
         "search": (
+            "check",
             "find",
             "search",
             "locate",
@@ -56,6 +91,18 @@ class IntentClassifier:
             "show code",
             "show implementation",
             "similar code",
+            "heroku",
+            "procfile",
+            "dyno",
+            "call server",
+            "video call",
+            "video server",
+            "signaling",
+            "signalling",
+            "websocket",
+            "socket.io",
+            "socketio",
+            "server",
             "notification",
             "payment",
             "login",
@@ -118,6 +165,21 @@ class IntentClassifier:
             for intent, keywords in self.keyword_map.items()
             if any(keyword in normalized for keyword in keywords)
         ]
+        if self._is_yenkasa_context(normalized):
+            self._append_unique(intents, "repository")
+            if any(keyword in normalized for keyword in self.yenkasa_diagnostic_keywords):
+                self._append_unique(intents, "search")
+                self._append_unique(intents, "audit")
         if len(intents) > 1:
             return ["multi-agent", *intents]
         return intents or ["repository"]
+
+    def _is_yenkasa_context(self, normalized_query: str) -> bool:
+        if any(keyword in normalized_query for keyword in self.yenkasa_database_context_keywords):
+            return False
+        return any(keyword in normalized_query for keyword in self.yenkasa_context_keywords)
+
+    @staticmethod
+    def _append_unique(intents: list[str], intent: str) -> None:
+        if intent not in intents:
+            intents.append(intent)

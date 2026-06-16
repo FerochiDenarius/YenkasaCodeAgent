@@ -19,6 +19,7 @@ from app.models.agent import AgentQueryRequest
 from app.models.agent import AgentResponse
 from app.models.metrics import AgentMetricsResponse
 from app.orchestrator import YenkasaIntelligenceOrchestrator
+from app.orchestrator.reasoning_engine import ReasoningEngine
 from app.repositories import MemoryEmbeddingsRepository
 from app.repositories import RepoChunksRepository
 from app.repositories import RepositoryIntelligenceRepository
@@ -31,6 +32,7 @@ from app.services.embedding_service import EmbeddingService
 from app.services.metrics import AgentMetrics
 from app.services.mongodb_service import MongoDBService
 from app.services.observability_service import ObservabilityService
+from app.services.postgres_document_service import PostgresDocumentService
 from app.services.product_builder_service import ProductBuilderService
 from app.services.refactor_service import RefactorService
 from app.services.sql_database_service import SQLDatabaseService
@@ -92,6 +94,7 @@ class YenkasaCodeOrchestrator:
         "language breakdown",
     )
     vector_search_intent_keywords = (
+        "check",
         "find",
         "search",
         "locate",
@@ -99,6 +102,18 @@ class YenkasaCodeOrchestrator:
         "show code",
         "show implementation",
         "similar code",
+        "heroku",
+        "procfile",
+        "dyno",
+        "call server",
+        "video call",
+        "video server",
+        "signaling",
+        "signalling",
+        "websocket",
+        "socket.io",
+        "socketio",
+        "server",
     )
     audit_intent_keywords = (
         "audit",
@@ -155,14 +170,17 @@ class YenkasaCodeOrchestrator:
         cloudrun_service: CloudRunService | None = None,
         observability_service: ObservabilityService | None = None,
         sql_database_service: SQLDatabaseService | None = None,
+        repository_store: MongoDBService | PostgresDocumentService | None = None,
     ) -> None:
         self.registry = registry or AgentRegistry()
         self.metrics = metrics or AgentMetrics()
         self.mongodb = mongodb
+        self.repository_store = repository_store or mongodb
         self.embedding_service = embedding_service
         self.cloudrun_service = cloudrun_service
         self.observability_service = observability_service
         self.sql_database_service = sql_database_service
+        self.reasoning = ReasoningEngine()
         self._register_foundation_agents()
         self.yio = YenkasaIntelligenceOrchestrator(registry=self.registry)
 
@@ -173,7 +191,7 @@ class YenkasaCodeOrchestrator:
             mongodb_settings = getattr(self.mongodb, "settings", None)
             self.registry.register(
                 DatabaseAgent(
-                    repo_chunks_repository=RepoChunksRepository(self.mongodb),
+                    repo_chunks_repository=RepoChunksRepository(self.repository_store or self.mongodb),
                     memory_embeddings_repository=MemoryEmbeddingsRepository(self.mongodb),
                     database_inventory_repository=DatabaseInventoryRepository(self.mongodb, mongodb_settings)
                     if mongodb_settings is not None
@@ -186,18 +204,18 @@ class YenkasaCodeOrchestrator:
                     else None,
                 )
             )
-        if self.mongodb is not None and self.registry.get(RepositoryAgent.name) is None:
+        if self.repository_store is not None and self.registry.get(RepositoryAgent.name) is None:
             self.registry.register(
                 RepositoryAgent(
-                    repo_chunks_repository=RepoChunksRepository(self.mongodb),
-                    repository_intelligence_repository=RepositoryIntelligenceRepository(self.mongodb),
+                    repo_chunks_repository=RepoChunksRepository(self.repository_store),
+                    repository_intelligence_repository=RepositoryIntelligenceRepository(self.repository_store),
                 )
             )
         if self.mongodb is not None and self.embedding_service is not None and self.registry.get(VectorSearchAgent.name) is None:
             self.registry.register(
                 VectorSearchAgent(
                     embedding_service=self.embedding_service,
-                    vector_search_repository=VectorSearchRepository(self.mongodb),
+                    vector_search_repository=VectorSearchRepository(self.repository_store or self.mongodb, memory_store=self.mongodb),
                 )
             )
         if self.registry.get(CodeAuditAgent.name) is None:
@@ -257,7 +275,7 @@ class YenkasaCodeOrchestrator:
                 success=response.success,
                 error=response.error,
             )
-            return response
+            return self.reasoning.finalize_response(query=request.query, response=response)
 
         agent_name = request.agent or self._select_agent(request.query)
         response: AgentResponse
@@ -275,7 +293,7 @@ class YenkasaCodeOrchestrator:
                 success=False,
                 error=str(exc),
             )
-            return response
+            return self.reasoning.finalize_response(query=request.query, response=response)
 
         response = await agent.execute(query=request.query, context=request.context)
         duration_ms = int((time.perf_counter() - started) * 1000)
@@ -305,7 +323,7 @@ class YenkasaCodeOrchestrator:
             success=response.success,
             error=response.error,
         )
-        return response
+        return self.reasoning.finalize_response(query=request.query, response=response)
 
     def _select_agent(self, query: str) -> str:
         normalized = query.lower()

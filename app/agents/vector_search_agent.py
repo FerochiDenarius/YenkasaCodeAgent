@@ -23,12 +23,15 @@ class VectorSearchAgent(BaseAgent):
     async def run(self, query: str, context: dict[str, Any]) -> dict[str, Any]:
         normalized = query.lower()
         limit = int(context.get("limit", 5))
-        query_vector = await self.embedding_service.embed_query(query)
 
         if "memory" in normalized or "memories" in normalized:
+            query_vector = await self.embedding_service.embed_query(query)
             matches = await self.vector_search_repository.search_memories(query_vector, limit=limit)
+        elif self.vector_search_repository.supports_repo_text_search:
+            matches = await self.vector_search_repository.search_repo_chunks([], limit=limit, query=query)
         else:
-            matches = await self.vector_search_repository.search_repo_chunks(query_vector, limit=limit)
+            query_vector = await self.embedding_service.embed_query(query)
+            matches = await self.vector_search_repository.search_repo_chunks(query_vector, limit=limit, query=query)
 
         return {"matches": [self._normalize_match(match) for match in matches]}
 

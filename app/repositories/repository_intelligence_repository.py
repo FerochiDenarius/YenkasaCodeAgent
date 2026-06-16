@@ -2,16 +2,16 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.services.mongodb_service import MongoDBService
-
 
 class RepositoryIntelligenceRepository:
     collection_name = "ai_embeddings"
 
-    def __init__(self, mongodb: MongoDBService) -> None:
-        self.mongodb = mongodb
+    def __init__(self, document_store) -> None:
+        self.mongodb = document_store
 
     async def inventory(self) -> list[dict[str, Any]]:
+        if hasattr(self.mongodb, "repository_inventory"):
+            return await self.mongodb.repository_inventory(self.collection_name)
         return await self.mongodb.aggregate(
             self.collection_name,
             [
@@ -44,6 +44,8 @@ class RepositoryIntelligenceRepository:
         )
 
     async def language_breakdown(self) -> list[dict[str, Any]]:
+        if hasattr(self.mongodb, "language_breakdown"):
+            return await self.mongodb.language_breakdown(self.collection_name)
         return await self.mongodb.aggregate(
             self.collection_name,
             [
@@ -106,6 +108,8 @@ class RepositoryIntelligenceRepository:
         )
 
     async def count_files_by_language(self, language: str) -> dict[str, Any]:
+        if hasattr(self.mongodb, "count_files_by_language"):
+            return await self.mongodb.count_files_by_language(language, self.collection_name)
         extension = {"kotlin": "\\.kt$", "python": "\\.py$"}.get(language.lower())
         if extension is None:
             raise ValueError(f"Unsupported language '{language}'.")
@@ -142,6 +146,8 @@ class RepositoryIntelligenceRepository:
         return records[0] if records else {"language": language.lower(), "chunk_count": 0, "file_count": 0}
 
     async def latest_activity(self) -> dict[str, Any] | None:
+        if hasattr(self.mongodb, "latest_indexed_file"):
+            return await self.mongodb.latest_indexed_file(self.collection_name)
         records = await self.mongodb.aggregate(
             self.collection_name,
             [
@@ -174,6 +180,8 @@ class RepositoryIntelligenceRepository:
         return records[0] if records else None
 
     async def health_anomalies(self) -> dict[str, Any]:
+        if hasattr(self.mongodb, "health_anomalies"):
+            return await self.mongodb.health_anomalies(self.collection_name)
         missing_metadata = await self.mongodb.aggregate(
             self.collection_name,
             [

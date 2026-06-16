@@ -22,6 +22,7 @@ from app.orchestrator import ExecutionPlanner
 from app.orchestrator import IntentClassifier
 from app.orchestrator import ResponseSynthesizer
 from app.orchestrator import YenkasaIntelligenceOrchestrator
+from app.orchestrator.reasoning_engine import ReasoningEngine
 from app.repositories.memory_embeddings_repository import MemoryEmbeddingsRepository
 from app.repositories.repo_chunks_repository import RepoChunksRepository
 from app.repositories.repository_intelligence_repository import RepositoryIntelligenceRepository
@@ -34,6 +35,7 @@ from app.services.product_builder_service import ProductBuilderService
 from app.services.refactor_service import RefactorService
 from app.security.auth import required_role_for_query
 from app.security.auth import _configured_keys
+import app.security.auth as auth_module
 
 
 VIEWER_HEADERS = {"X-API-Key": "dev-viewer-key"}
@@ -66,17 +68,13 @@ def test_agent_query_routes_to_system_agent() -> None:
     assert response.status_code == 200
     assert response.headers["X-Request-ID"]
     payload = response.json()
-    assert payload == {
-        "agent": "system",
-        "success": True,
-        "result": {
-            "message": "YenkasaCode Agent foundation is online.",
-            "query": "status",
-            "context": {},
-            "phase": "phase_1_foundation",
-        },
-        "error": None,
-    }
+    assert payload["agent"] == "system"
+    assert payload["success"] is True
+    assert payload["error"] is None
+    assert payload["result"]["answer"] == "I collected evidence for: message, query, context, phase."
+    assert payload["result"]["facts"]["message"] == "YenkasaCode Agent foundation is online."
+    assert payload["evidence_package"]["agent"] == "system"
+    assert payload["reasoning"]["finalized"] is True
 
 
 def test_agent_discovery() -> None:
@@ -170,6 +168,29 @@ def test_viewer_cannot_access_admin_metrics() -> None:
 
     assert response.status_code == 403
     assert response.json() == {"detail": "Insufficient role."}
+
+
+def test_yenkasa_ai_bearer_token_can_authorize_agent_requests(monkeypatch) -> None:
+    async def fake_authenticate_yenkasa_ai_token(request, token):
+        assert token == "test-yenkasa-ai-token"
+        return auth_module.AuthenticatedPrincipal(
+            role="admin",
+            key_hash="test-yenkasa-ai-principal",
+            subject="test-user",
+            email="test@example.com",
+            source="yenkasa_ai",
+        )
+
+    monkeypatch.setattr(auth_module, "_authenticate_yenkasa_ai_token", fake_authenticate_yenkasa_ai_token)
+
+    with TestClient(app) as client:
+        response = client.get(
+            "/api/agent/metrics",
+            headers={"X-Yenkasa-AI-Authorization": "Bearer test-yenkasa-ai-token"},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["registered_agents"][0] == "system"
 
 
 def test_viewer_cannot_run_admin_database_query() -> None:
@@ -664,6 +685,89 @@ class FakeRepositoryMongoDBService:
         return [{"missing_metadata_count": 0}]
 
 
+class FakePostgresRepositoryStore:
+    is_postgres_document_store = True
+
+    async def count_documents(self, collection_name: str, filter_query: dict[str, object] | None = None) -> int:
+        assert collection_name == "ai_embeddings"
+        assert filter_query is None
+        return 18848
+
+    async def collection_stats(self, collection_name: str) -> dict[str, object]:
+        assert collection_name == "ai_embeddings"
+        return {"count": 18848, "storage_backend": "postgres", "table": "ai_documents"}
+
+    async def repository_inventory(self, collection_name: str) -> list[dict[str, object]]:
+        assert collection_name == "ai_embeddings"
+        return [
+            {
+                "repository": "yenkasaChat",
+                "chunk_count": 4123,
+                "file_count": 1200,
+                "latest_indexed_at": "2026-06-11T10:00:00Z",
+            }
+        ]
+
+    async def top_repositories_by_chunk_count(
+        self,
+        collection_name: str,
+        *,
+        limit: int = 10,
+    ) -> list[dict[str, object]]:
+        assert collection_name == "ai_embeddings"
+        assert limit == 1
+        return [{"repository": "YenkasaCodeAgent", "chunk_count": 13438}]
+
+    async def language_breakdown(self, collection_name: str) -> list[dict[str, object]]:
+        assert collection_name == "ai_embeddings"
+        return [{"language": "python", "chunk_count": 100, "file_count": 20}]
+
+    async def count_files_by_language(self, language: str, collection_name: str) -> dict[str, object]:
+        assert collection_name == "ai_embeddings"
+        assert language == "python"
+        return {"language": "python", "chunk_count": 100, "file_count": 20}
+
+    async def latest_indexed_file(self, collection_name: str) -> dict[str, object]:
+        assert collection_name == "ai_embeddings"
+        return {
+            "repository": "YenkasaAI",
+            "file_path": "backend/app/main.py",
+            "indexed_at": "2026-06-11T10:00:00Z",
+        }
+
+    async def health_anomalies(self, collection_name: str) -> dict[str, object]:
+        assert collection_name == "ai_embeddings"
+        return {
+            "missing_metadata_count": 0,
+            "zero_chunk_repositories": [],
+            "indexing_anomalies": [],
+        }
+
+
+class FakePostgresSearchStore(FakePostgresRepositoryStore):
+    def __init__(self) -> None:
+        self.queries: list[str] = []
+
+    async def search_repo_chunks_text(
+        self,
+        query: str,
+        collection_name: str,
+        *,
+        limit: int = 5,
+    ) -> list[dict[str, object]]:
+        self.queries.append(query)
+        assert collection_name == "ai_embeddings"
+        assert limit == 5
+        return [
+            {
+                "file_path": "Procfile",
+                "repository": "yenkasaChat",
+                "score": 4.0,
+                "snippet": "web: node server.js",
+            }
+        ]
+
+
 def build_repository_agent(mongodb: FakeRepositoryMongoDBService | None = None) -> RepositoryAgent:
     mongodb = mongodb or FakeRepositoryMongoDBService()
     return RepositoryAgent(
@@ -686,6 +790,56 @@ def test_repository_inventory() -> None:
                 "latest_indexed_at": "2026-06-06T12:00:00Z",
             }
         ]
+    }
+
+
+def test_repository_inventory_reads_postgres_document_store() -> None:
+    store = FakePostgresRepositoryStore()
+    agent = RepositoryAgent(
+        repo_chunks_repository=RepoChunksRepository(store),
+        repository_intelligence_repository=RepositoryIntelligenceRepository(store),
+    )
+
+    response = asyncio.run(agent.execute("Can you see my repo yenkasaChat?"))
+
+    assert response.success is True
+    assert response.result == {
+        "repositories": [
+            {
+                "repository": "yenkasaChat",
+                "chunk_count": 4123,
+                "file_count": 1200,
+                "latest_indexed_at": "2026-06-11T10:00:00Z",
+            }
+        ]
+    }
+
+
+def test_repository_agent_searches_indexed_content_for_file_questions() -> None:
+    store = FakePostgresSearchStore()
+    agent = RepositoryAgent(
+        repo_chunks_repository=RepoChunksRepository(store),
+        repository_intelligence_repository=RepositoryIntelligenceRepository(store),
+    )
+
+    response = asyncio.run(agent.execute("Which file handles Cloudinary uploads in yenkasaChat?"))
+
+    assert store.queries == ["Which file handles Cloudinary uploads in yenkasaChat?"]
+    assert response.success is True
+    assert response.result == {
+        "matches": [
+            {
+                "file_path": "Procfile",
+                "repository": "yenkasaChat",
+                "similarity_score": 4.0,
+                "snippet": "web: node server.js",
+            }
+        ],
+        "search": {
+            "query": "Which file handles Cloudinary uploads in yenkasaChat?",
+            "collection": "ai_embeddings",
+            "match_count": 1,
+        },
     }
 
 
@@ -736,6 +890,41 @@ def test_repository_agent_routing_behavior() -> None:
 
     assert response.agent == "RepositoryAgent"
     assert response.success is True
+
+
+def test_repository_agent_routing_uses_postgres_repository_store() -> None:
+    orchestrator = YenkasaCodeOrchestrator(
+        mongodb=FakeRepositoryMongoDBService(),
+        repository_store=FakePostgresRepositoryStore(),
+    )
+    response = asyncio.run(
+        orchestrator.route(AgentQueryRequest(query="Show largest repository by chunk count", agent="RepositoryAgent", context={"limit": 1}))
+    )
+
+    assert response.agent == "RepositoryAgent"
+    assert response.success is True
+    assert response.result["answer"] == "The largest indexed repository is YenkasaCodeAgent with 13,438 chunks."
+    assert response.result["facts"] == {"top_repositories": [{"repository": "YenkasaCodeAgent", "chunk_count": 13438}]}
+    assert "raw_evidence" not in response.result
+    assert response.evidence_package["agent"] == "RepositoryAgent"
+
+
+def test_repository_agent_routing_finalizes_content_search_answer() -> None:
+    store = FakePostgresSearchStore()
+    orchestrator = YenkasaCodeOrchestrator(
+        mongodb=FakeRepositoryMongoDBService(),
+        repository_store=store,
+    )
+    response = asyncio.run(
+        orchestrator.route(AgentQueryRequest(query="are you aware am hosting my call and video call server on heroku? check my repo", agent="RepositoryAgent"))
+    )
+
+    assert store.queries == ["are you aware am hosting my call and video call server on heroku? check my repo"]
+    assert response.agent == "RepositoryAgent"
+    assert response.success is True
+    assert "I searched the indexed repository content" in response.result["answer"]
+    assert "yenkasaChat Procfile" in response.result["answer"]
+    assert response.result["sources"][0]["file_path"] == "Procfile"
 
 
 class FakeEmbeddingService:
@@ -819,6 +1008,41 @@ def test_vector_memory_search() -> None:
             }
         ]
     }
+
+
+def test_vector_repo_search_uses_postgres_repository_store_when_available() -> None:
+    store = FakePostgresSearchStore()
+    response = asyncio.run(
+        VectorSearchAgent(
+            embedding_service=FakeEmbeddingService(),
+            vector_search_repository=VectorSearchRepository(store, memory_store=FakeVectorMongoDBService()),
+        ).execute("are you hosting the call server on Heroku?")
+    )
+
+    assert store.queries == ["are you hosting the call server on Heroku?"]
+    assert response.success is True
+    assert response.result == {
+        "matches": [
+            {
+                "file_path": "Procfile",
+                "repository": "yenkasaChat",
+                "similarity_score": 4.0,
+                "snippet": "web: node server.js",
+            }
+        ]
+    }
+
+
+def test_vector_memory_search_stays_on_mongodb_when_repo_store_is_postgres() -> None:
+    response = asyncio.run(
+        VectorSearchAgent(
+            embedding_service=FakeEmbeddingService(),
+            vector_search_repository=VectorSearchRepository(FakePostgresSearchStore(), memory_store=FakeVectorMongoDBService()),
+        ).execute("Find related memories")
+    )
+
+    assert response.success is True
+    assert response.result["matches"][0]["snippet"] == "User memory about authentication decisions."
 
 
 def test_vector_search_routing_behavior() -> None:
@@ -1303,6 +1527,253 @@ def test_yio_routes_store_database_queries_to_database_agent() -> None:
     assert [step.agent for step in plan.steps] == ["DatabaseAgent"]
 
 
+def test_yio_routes_yenkasa_app_context_to_repository_agent_without_repo_keyword() -> None:
+    classifier = IntentClassifier()
+    planner = ExecutionPlanner()
+
+    intents = classifier.classify("Tell me what is happening in the Yenkasa app.")
+    plan = planner.plan(query="Tell me what is happening in the Yenkasa app.", intents=intents)
+
+    assert "repository" in intents
+    assert "RepositoryAgent" in [step.agent for step in plan.steps]
+
+
+def test_yio_routes_yenkasa_app_bug_questions_to_repository_search_and_audit() -> None:
+    classifier = IntentClassifier()
+    planner = ExecutionPlanner()
+
+    intents = classifier.classify("Find and fix the notification bug in the Yenkasa app.")
+    plan = planner.plan(query="Find and fix the notification bug in the Yenkasa app.", intents=intents)
+
+    assert "multi-agent" in intents
+    assert "repository" in intents
+    assert "search" in intents
+    assert "audit" in intents
+    assert {"RepositoryAgent", "VectorSearchAgent", "CodeAuditAgent"}.issubset(
+        {step.agent for step in plan.steps}
+    )
+
+
+def test_yio_routes_repo_hosting_questions_to_repository_search() -> None:
+    classifier = IntentClassifier()
+    planner = ExecutionPlanner()
+
+    query = "are you aware am hosting my call and video call server on heroku ?check my repo"
+    intents = classifier.classify(query)
+    plan = planner.plan(query=query, intents=intents)
+
+    assert "multi-agent" in intents
+    assert "repository" in intents
+    assert "search" in intents
+    assert "RepositoryAgent" in [step.agent for step in plan.steps]
+    assert "VectorSearchAgent" in [step.agent for step in plan.steps]
+
+
+def test_yio_reasoning_uses_source_matches_for_repo_hosting_questions() -> None:
+    response = AgentResponse(
+        agent="YIO",
+        success=True,
+        result={
+            "evidence": [
+                {
+                    "agent": "RepositoryAgent",
+                    "facts": {
+                        "repository_count": 12,
+                        "repository_names": ["yenkasaChat", "YenkasaCodeAgent"],
+                        "total_files": 4792,
+                        "total_chunks": 18848,
+                        "latest_repository": {
+                            "repository": "YenkasaCodeAgent",
+                            "latest_indexed_at": "2026-06-08T00:04:57.773729",
+                        },
+                    },
+                    "sources": [],
+                    "confidence": 0.96,
+                },
+                {
+                    "agent": "VectorSearchAgent",
+                    "repository": "yenkasaChat",
+                    "file_path": "Procfile",
+                    "snippet": "web: npm start",
+                    "similarity_score": 0.91,
+                },
+                {
+                    "agent": "VectorSearchAgent",
+                    "repository": "yenkasaChat",
+                    "file_path": "src/signaling/server.js",
+                    "snippet": "const io = require('socket.io')(server);",
+                    "similarity_score": 0.88,
+                },
+            ],
+            "plan": {"agents": ["RepositoryAgent", "VectorSearchAgent"]},
+            "agent_results": [
+                {
+                    "agent": "RepositoryAgent",
+                    "facts": {
+                        "repository_count": 12,
+                        "repository_names": ["yenkasaChat", "YenkasaCodeAgent"],
+                        "total_files": 4792,
+                        "total_chunks": 18848,
+                    },
+                    "sources": [],
+                    "confidence": 0.96,
+                },
+                {
+                    "agent": "VectorSearchAgent",
+                    "facts": {"match_count": 2},
+                    "sources": [
+                        {
+                            "repository": "yenkasaChat",
+                            "file_path": "Procfile",
+                            "snippet": "web: npm start",
+                            "score": 0.91,
+                        }
+                    ],
+                    "confidence": 0.96,
+                },
+            ],
+        },
+    )
+
+    finalized = ReasoningEngine().finalize_response(
+        query="are you aware am hosting my call and video call server on heroku ?check my repo",
+        response=response,
+    )
+
+    assert "file-level evidence" in finalized.result["answer"]
+    assert "yenkasaChat Procfile" in finalized.result["answer"]
+    assert "src/signaling/server.js" in finalized.result["answer"]
+    assert "I collected evidence" not in finalized.result["answer"]
+    assert "Selected agents" not in finalized.result["answer"]
+
+
+def test_yio_reasoning_reports_zero_source_matches_without_raw_inventory_dump() -> None:
+    response = AgentResponse(
+        agent="YIO",
+        success=True,
+        result={
+            "evidence": [
+                {
+                    "agent": "RepositoryAgent",
+                    "facts": {
+                        "repository_count": 12,
+                        "repository_names": ["yenkasaChat", "YenkasaCodeAgent"],
+                        "total_files": 4792,
+                        "total_chunks": 18848,
+                        "latest_repository": {
+                            "repository": "YenkasaCodeAgent",
+                            "latest_indexed_at": "2026-06-08T00:04:57.773729",
+                        },
+                    },
+                    "sources": [],
+                    "confidence": 0.96,
+                }
+            ],
+            "plan": {"agents": ["RepositoryAgent", "VectorSearchAgent"]},
+            "agent_results": [
+                {
+                    "agent": "RepositoryAgent",
+                    "facts": {
+                        "repository_count": 12,
+                        "repository_names": ["yenkasaChat", "YenkasaCodeAgent"],
+                        "total_files": 4792,
+                        "total_chunks": 18848,
+                        "latest_repository": {
+                            "repository": "YenkasaCodeAgent",
+                            "latest_indexed_at": "2026-06-08T00:04:57.773729",
+                        },
+                    },
+                    "sources": [],
+                    "confidence": 0.96,
+                },
+                {
+                    "agent": "VectorSearchAgent",
+                    "facts": {"match_count": 0},
+                    "sources": [],
+                    "confidence": 0.96,
+                },
+            ],
+        },
+    )
+
+    finalized = ReasoningEngine().finalize_response(
+        query="are you aware am hosting my call and video call server on heroku ?check my repo",
+        response=response,
+    )
+
+    answer = finalized.result["answer"]
+    assert "I also ran source search" in answer
+    assert "returned no file-level matches" in answer
+    assert "must be paired with VectorSearchAgent" not in answer
+    assert "Selected agents" not in answer
+
+
+def test_yio_reasoning_distinguishes_call_server_files_from_heroku_hosting_evidence() -> None:
+    response = AgentResponse(
+        agent="YIO",
+        success=True,
+        result={
+            "evidence": [
+                {
+                    "agent": "RepositoryAgent",
+                    "facts": {
+                        "repository_count": 12,
+                        "repository_names": ["YenkasaChatSignaling"],
+                        "total_files": 4792,
+                        "total_chunks": 18848,
+                    },
+                    "sources": [],
+                    "confidence": 0.96,
+                },
+                {
+                    "agent": "VectorSearchAgent",
+                    "repository": "YenkasaChatSignaling",
+                    "file_path": "caller.server.js",
+                    "snippet": "const WebSocket = require('ws'); data: { type: 'call_request', isVideo: true }",
+                    "similarity_score": 7.0,
+                },
+            ],
+            "plan": {"agents": ["RepositoryAgent", "VectorSearchAgent"]},
+            "agent_results": [
+                {
+                    "agent": "RepositoryAgent",
+                    "facts": {
+                        "repository_count": 12,
+                        "repository_names": ["YenkasaChatSignaling"],
+                        "total_files": 4792,
+                        "total_chunks": 18848,
+                    },
+                    "sources": [],
+                    "confidence": 0.96,
+                },
+                {
+                    "agent": "VectorSearchAgent",
+                    "facts": {"match_count": 1},
+                    "sources": [
+                        {
+                            "repository": "YenkasaChatSignaling",
+                            "file_path": "caller.server.js",
+                            "snippet": "const WebSocket = require('ws'); data: { type: 'call_request', isVideo: true }",
+                            "score": 7.0,
+                        }
+                    ],
+                    "confidence": 0.96,
+                },
+            ],
+        },
+    )
+
+    finalized = ReasoningEngine().finalize_response(
+        query="are you aware am hosting my call and video call server on heroku ?check my repo",
+        response=response,
+    )
+
+    answer = finalized.result["answer"]
+    assert "call/video-call server code" in answer
+    assert "did not find file-level evidence that it is hosted on Heroku" in answer
+    assert "YenkasaChatSignaling caller.server.js" in answer
+
+
 def test_yio_routes_database_metadata_queries_to_database_agent() -> None:
     classifier = IntentClassifier()
     planner = ExecutionPlanner()
@@ -1419,4 +1890,4 @@ def test_product_builder_yio_routing() -> None:
     assert response.agent == "YIO"
     assert response.success is True
     assert response.result["plan"]["agents"] == ["ProductBuilderAgent"]
-    assert response.result["evidence"][0]["result"]["generation_type"] == "flutter"
+    assert response.result["evidence"][0]["facts"]["generation_type"] == "flutter"

@@ -14,12 +14,28 @@ class Settings(BaseSettings):
     mongodb_uri: str = ""
     mongodb_database: str = "yenkasa_ai_db"
     mongodb_app_database: str = "yenkasaChat"
+    database_backend: str = "mongo"
+    postgres_dsn: str = ""
+    postgres_host: str = ""
+    postgres_port: int = 5432
+    postgres_user: str = ""
+    postgres_password: str = ""
+    postgres_database: str = ""
+    postgres_cloud_sql_connection_name: str = ""
+    postgres_pool_min_size: int = 1
+    postgres_pool_max_size: int = 4
+    postgres_command_timeout_s: int = 15
+    postgres_document_table: str = "ai_documents"
+    postgres_ai_embeddings_collection: str = "ai_embeddings"
     baleshop_database_url: str = ""
     baleshop_database_name: str = "yenkasa_store"
     baleshop_database_label: str = "yenkasa_store"
     vertex_project_id: str = ""
     vertex_location: str = "us-central1"
     vertex_embedding_model: str = "gemini-embedding-001"
+    vertex_embedding_dimensions: int = 768
+    yenkasa_ai_base_url: str = "https://yenkasa-ai-backend-496173204476.europe-west1.run.app"
+    yenkasa_ai_auth_timeout_seconds: float = 10.0
     google_cloud_project: str = "project-10405180-0afd-4ecc-9f8"
     google_application_credentials: str = ""
     cloud_run_service: str = ""
@@ -40,6 +56,7 @@ class Settings(BaseSettings):
     mongodb_max_pool_size: int = 50
     mongodb_aggregate_limit: int = 100
     cloud_run_location: str = "us-central1"
+    workspace_root: str = "/tmp/yca_workspace"
 
     @property
     def environment(self) -> str:

@@ -32,12 +32,18 @@ class EmbeddingService:
                 client.models.embed_content,
                 model=self.settings.vertex_embedding_model,
                 contents=[text],
+                config={"output_dimensionality": self.settings.vertex_embedding_dimensions},
             ),
             timeout=self.settings.external_timeout_seconds,
         )
         if not response.embeddings:
             raise RuntimeError("Vertex AI returned no embeddings.")
-        return list(response.embeddings[0].values)
+        vector = list(response.embeddings[0].values)
+        if len(vector) != self.settings.vertex_embedding_dimensions:
+            raise RuntimeError(
+                "Vertex AI returned an embedding dimension that does not match the configured Atlas vector index."
+            )
+        return vector
 
     async def readiness_check(self) -> bool:
         await self.embed_query("readiness check")

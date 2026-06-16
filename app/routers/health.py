@@ -37,6 +37,9 @@ async def ready(request: Request, principal: AdminPrincipal) -> JSONResponse:
         "cloud_run": await _run_check(request.app.state.cloudrun_service.readiness_check),
         "cloud_logging": await _run_check(request.app.state.observability_service.readiness_check),
     }
+    repository_store = getattr(request.app.state, "repository_store", None)
+    if repository_store is not None and repository_store is not request.app.state.mongodb:
+        checks["repository_postgres"] = await _run_check(repository_store.readiness_check)
     sql_database_service = getattr(request.app.state, "sql_database_service", None)
     if sql_database_service is not None and sql_database_service.configured:
         checks["baleshop_sql"] = await _run_check(sql_database_service.readiness_check)

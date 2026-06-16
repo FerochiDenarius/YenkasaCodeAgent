@@ -20,6 +20,7 @@ from app.services.cloudrun_service import CloudRunService
 from app.services.embedding_service import EmbeddingService
 from app.services.mongodb_service import MongoDBService
 from app.services.observability_service import ObservabilityService
+from app.services.postgres_document_service import PostgresDocumentService
 from app.services.sql_database_service import SQLDatabaseService
 
 
@@ -32,6 +33,10 @@ async def lifespan(app: FastAPI):
     configure_logging(settings.log_level)
     app.state.settings = settings
     app.state.mongodb = MongoDBService(settings)
+    if settings.database_backend.lower() == "postgres":
+        app.state.repository_store = PostgresDocumentService(settings)
+    else:
+        app.state.repository_store = app.state.mongodb
     app.state.embedding_service = EmbeddingService(settings)
     app.state.cloudrun_service = CloudRunService(settings)
     app.state.observability_service = ObservabilityService(settings)
@@ -43,10 +48,13 @@ async def lifespan(app: FastAPI):
         cloudrun_service=app.state.cloudrun_service,
         observability_service=app.state.observability_service,
         sql_database_service=app.state.sql_database_service,
+        repository_store=app.state.repository_store,
     )
     LOGGER.info("YenkasaCode Agent started environment=%s", settings.environment)
     yield
     await app.state.sql_database_service.close()
+    if app.state.repository_store is not app.state.mongodb:
+        await app.state.repository_store.close()
     await app.state.mongodb.close()
     LOGGER.info("YenkasaCode Agent stopped")
 

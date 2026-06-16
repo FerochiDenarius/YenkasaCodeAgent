@@ -8,6 +8,7 @@ from app.models.agent import AgentResponse
 from app.orchestrator.execution_planner import ExecutionPlanner
 from app.orchestrator.intent_classifier import IntentClassifier
 from app.orchestrator.response_synthesizer import ResponseSynthesizer
+from app.utils.evidence_package import build_evidence_package
 
 
 class YenkasaIntelligenceOrchestrator:
@@ -36,7 +37,13 @@ class YenkasaIntelligenceOrchestrator:
         result["execution_time_ms"] = int((time.perf_counter() - started) * 1000)
         success = all(response.success for response in responses)
         error = None if success else "One or more planned agents failed."
-        return AgentResponse(agent=self.name, success=success, result=result, error=error)
+        return AgentResponse(
+            agent=self.name,
+            success=success,
+            result=result,
+            error=error,
+            evidence_package=build_evidence_package(agent=self.name, result=result, success=success, error=error, query=query),
+        )
 
     async def _execute_plan(self, *, query: str, context: dict[str, object], plan) -> list[AgentResponse]:
         if not plan.steps:

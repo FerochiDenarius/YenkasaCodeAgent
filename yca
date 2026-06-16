@@ -1,0 +1,24 @@
+#!/usr/bin/env sh
+set -eu
+
+SOURCE=$0
+while [ -L "$SOURCE" ]; do
+  DIR=$(CDPATH= cd -- "$(dirname -- "$SOURCE")" && pwd)
+  TARGET=$(readlink "$SOURCE")
+  case "$TARGET" in
+    /*) SOURCE=$TARGET ;;
+    *) SOURCE=$DIR/$TARGET ;;
+  esac
+done
+
+ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$SOURCE")" && pwd)
+
+if [ -x "$ROOT_DIR/.venv312/bin/python" ]; then
+  exec "$ROOT_DIR/.venv312/bin/python" -m app.cli "$@"
+fi
+
+if [ -x "$ROOT_DIR/.venv/bin/python" ]; then
+  exec "$ROOT_DIR/.venv/bin/python" -m app.cli "$@"
+fi
+
+exec python3 -m app.cli "$@"

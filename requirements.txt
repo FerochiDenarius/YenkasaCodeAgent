@@ -5,6 +5,7 @@ pydantic-settings==2.14.1
 pytest==9.0.3
 httpx==0.28.1
 motor==3.7.1
+asyncpg==0.31.0
 google-genai==2.8.0
 google-cloud-run==0.16.0
 google-cloud-logging==3.16.0

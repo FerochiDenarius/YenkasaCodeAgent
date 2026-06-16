@@ -17,6 +17,8 @@ class AgentResponse(BaseModel):
     success: bool
     result: dict[str, Any] = Field(default_factory=dict)
     error: str | None = None
+    evidence_package: dict[str, Any] | None = None
+    reasoning: dict[str, Any] | None = None
 
 
 class AgentDescriptor(BaseModel):

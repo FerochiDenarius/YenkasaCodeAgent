@@ -7,6 +7,7 @@ from typing import Any
 from app.models.agent import AgentDescriptor
 from app.models.agent import AgentResponse
 from app.security.redaction import sanitize_error
+from app.utils.evidence_package import build_evidence_package
 
 
 class BaseAgent(ABC):
@@ -24,9 +25,21 @@ class BaseAgent(ABC):
     async def execute(self, query: str, context: dict[str, Any] | None = None) -> AgentResponse:
         try:
             result = await self.run(query=query, context=context or {})
-            return AgentResponse(agent=self.name, success=True, result=result)
+            return AgentResponse(
+                agent=self.name,
+                success=True,
+                result=result,
+                evidence_package=build_evidence_package(agent=self.name, result=result, success=True, query=query),
+            )
         except Exception as exc:
-            return AgentResponse(agent=self.name, success=False, result={}, error=sanitize_error(exc))
+            error = sanitize_error(exc)
+            return AgentResponse(
+                agent=self.name,
+                success=False,
+                result={},
+                error=error,
+                evidence_package=build_evidence_package(agent=self.name, result={}, success=False, error=error, query=query),
+            )
 
     @abstractmethod
     async def run(self, query: str, context: dict[str, Any]) -> dict[str, Any]:
