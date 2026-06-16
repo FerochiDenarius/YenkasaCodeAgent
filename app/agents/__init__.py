@@ -9,6 +9,7 @@ from app.agents.registry import AgentRegistry
 from app.agents.repository_agent import RepositoryAgent
 from app.agents.system import SystemAgent
 from app.agents.vector_search_agent import VectorSearchAgent
+from app.agents.workspace_agent import WorkspaceAgent
 
 __all__ = [
     "AgentRegistry",
@@ -22,4 +23,5 @@ __all__ = [
     "RepositoryAgent",
     "SystemAgent",
     "VectorSearchAgent",
+    "WorkspaceAgent",
 ]

@@ -36,12 +36,23 @@ from app.services.postgres_document_service import PostgresDocumentService
 from app.services.product_builder_service import ProductBuilderService
 from app.services.refactor_service import RefactorService
 from app.services.sql_database_service import SQLDatabaseService
+from app.agents import WorkspaceAgent
 
 
 LOGGER = logging.getLogger("yenkasa_code.orchestrator")
 
 
 class YenkasaCodeOrchestrator:
+    workspace_intent_keywords = (
+        "read file",
+        "open file",
+        "create file",
+        "write file",
+        "delete file",
+        "list directory",
+        "list files",
+    )
+
     database_intent_keywords = (
         "database",
         "mongo",
@@ -185,6 +196,17 @@ class YenkasaCodeOrchestrator:
         self.yio = YenkasaIntelligenceOrchestrator(registry=self.registry)
 
     def _register_foundation_agents(self) -> None:
+
+        if (
+                self.mongodb is not None
+                and self.registry.get(WorkspaceAgent.name) is None
+        ):
+            self.registry.register(
+                WorkspaceAgent(
+                    workspace_root=self.mongodb.settings.workspace_root
+                )
+            )
+
         if self.registry.get(SystemAgent.name) is None:
             self.registry.register(SystemAgent())
         if self.mongodb is not None and self.registry.get(DatabaseAgent.name) is None:
@@ -327,36 +349,52 @@ class YenkasaCodeOrchestrator:
 
     def _select_agent(self, query: str) -> str:
         normalized = query.lower()
+
         if self.registry.get(ProductBuilderAgent.name) is not None and any(
-            keyword in normalized for keyword in self.product_builder_intent_keywords
+                keyword in normalized for keyword in self.product_builder_intent_keywords
         ):
             return ProductBuilderAgent.name
+
         if self.registry.get(ObservabilityAgent.name) is not None and any(
-            keyword in normalized for keyword in self.observability_intent_keywords
+                keyword in normalized for keyword in self.observability_intent_keywords
         ):
             return ObservabilityAgent.name
+
         if self.registry.get(CloudRunAgent.name) is not None and any(
-            keyword in normalized for keyword in self.cloudrun_intent_keywords
+                keyword in normalized for keyword in self.cloudrun_intent_keywords
         ):
             return CloudRunAgent.name
+
         if self.registry.get(RefactorAgent.name) is not None and any(
-            keyword in normalized for keyword in self.refactor_intent_keywords
+                keyword in normalized for keyword in self.refactor_intent_keywords
         ):
             return RefactorAgent.name
+
         if self.registry.get(CodeAuditAgent.name) is not None and any(
-            keyword in normalized for keyword in self.audit_intent_keywords
+                keyword in normalized for keyword in self.audit_intent_keywords
         ):
             return CodeAuditAgent.name
+
         if self.registry.get(VectorSearchAgent.name) is not None and any(
-            keyword in normalized for keyword in self.vector_search_intent_keywords
+                keyword in normalized for keyword in self.vector_search_intent_keywords
         ):
             return VectorSearchAgent.name
+
+        # WorkspaceAgent should be checked BEFORE RepositoryAgent
+        if self.registry.get(WorkspaceAgent.name) is not None and any(
+                keyword in normalized
+                for keyword in self.workspace_intent_keywords
+        ):
+            return WorkspaceAgent.name
+
         if self.registry.get(RepositoryAgent.name) is not None and any(
-            keyword in normalized for keyword in self.repository_intent_keywords
+                keyword in normalized for keyword in self.repository_intent_keywords
         ):
             return RepositoryAgent.name
+
         if self.registry.get(DatabaseAgent.name) is not None and any(
-            keyword in normalized for keyword in self.database_intent_keywords
+                keyword in normalized for keyword in self.database_intent_keywords
         ):
             return DatabaseAgent.name
+
         return SystemAgent.name

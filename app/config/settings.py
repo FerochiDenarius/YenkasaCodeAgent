@@ -58,6 +58,7 @@ class Settings(BaseSettings):
     cloud_run_location: str = "us-central1"
     workspace_root: str = "/tmp/yca_workspace"
 
+
     @property
     def environment(self) -> str:
         return self.app_env
